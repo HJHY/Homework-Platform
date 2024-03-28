@@ -1,0 +1,92 @@
+server:
+  port: 8888
+
+spring:
+  #邮件服务配置写在dev上会导致无法进行装配
+  mail:
+    host: smtp.qq.com
+    username: xxxxxx@qq.com
+    password: xxxxxx
+    default-encoding: UTF-8
+    port: 587
+    test-connection: true
+    properties:
+      mail:
+      smtp:
+      auth: true
+      socketFactory:
+      class: javax.net.ssl.SSLSocketFactory
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: xxxxxx
+    username: xxxxxx
+    password: xxxxxx
+  rabbitmq:
+    host: xxxxxx
+    port: 5672
+    username: xxxxxx
+    password: xxxxxx
+    virtual-host: xxxxxx
+  data:
+    redis:
+      port: 6379
+      host: xxxxxx
+      password: xxxxxx
+      connect-timeout: 5000
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+  #    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      display-name: '测试'
+      paths-to-match: '/**'
+      packages-to-scan: xxxxxx
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+    swagger-model-name: 实体类列表
+
+# 配置MybatisPlus
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+
+cloud-storage:
+  mode: oss
+  aliyun:
+    oss:
+      #Object Storage Service
+      endpoint: xxxxxx
+      access-key-id: xxxxxx
+      access-key-secret: xxxxxx
+      bucket-name: homework-xxxxxx
+      callback-url: xxxxxx
+    #Function Computing
+    fc:
+      access-key-id: xxxxxx
+      access-key-secret: xxxxxx
+      region-id: cn-xxxxxx
+      url: xxxxxx
+      bucket-name: xxxxxx
+      source-dir: xxxxxx
+
+social-login:
+  gitee:
+    client-id: xxxxxx
+    client-secret: xxxxxx
+    redirect-url: xxxxxx
+    o-auth-uri: xxxxxx
+    user-info-uri: xxxxxx

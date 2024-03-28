@@ -1,0 +1,4 @@
+- ThreadLocal实现拦截器传递信息
+- 三方登录
+- 无感token刷新
+- 使用OSS后端签名前端直传,函数计算实现OSS打包,STS security token实现特定资源的限时下载访问

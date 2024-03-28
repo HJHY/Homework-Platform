@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.hjhy.homeworkplatform.generator.mapper.HomeworkSubmissionMapper">
+
+    <resultMap id="BaseResultMap" type="org.hjhy.homeworkplatform.generator.domain.HomeworkSubmission">
+        <id property="homeworkId" column="homework_id" jdbcType="INTEGER"/>
+        <result property="userId" column="user_id" jdbcType="INTEGER"/>
+        <result property="belongingId" column="belonging_id" jdbcType="INTEGER"/>
+        <result property="description" column="description" jdbcType="VARCHAR"/>
+        <result property="fileSrc" column="file_src" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="INTEGER"/>
+        <result property="isValid" column="is_valid" jdbcType="TINYINT"/>
+        <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+        <result property="lastUpdateTime" column="last_update_time" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <resultMap id="HomeworkSubmissionVoMap" type="org.hjhy.homeworkplatform.vo.HomeworkSubmissionVo">
+        <result property="submitHomeworkId" column="submit_homework_id" jdbcType="INTEGER"/>
+        <result property="homeworkId" column="homework_id" jdbcType="INTEGER"/>
+        <result property="lastSubmitTime" column="last_submit_time" jdbcType="TIMESTAMP"/>
+        <result property="homeworkName" column="homework_name" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <select id="getSubmittedHomework" resultMap="HomeworkSubmissionVoMap">
+        SELECT hs.homework_id      AS submit_homework_id,
+               hr.homework_id      AS homework_id,
+               hs.last_submit_time AS last_submit_time,
+               hr.homework_name    AS homework_name
+        FROM homework_release hr
+                 INNER JOIN (SELECT belonging_id     AS homework_id,
+                                    MAX(create_time) AS last_submit_time
+                             FROM homework_submission hs
+                             WHERE user_id = #{userId}
+                               AND is_valid = 1
+                               AND status = 1
+                             GROUP BY belonging_id) hs
+                            ON hr.homework_id = hs.homework_id
+    </select>
+
+</mapper>

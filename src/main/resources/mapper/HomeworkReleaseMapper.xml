@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.hjhy.homeworkplatform.generator.mapper.HomeworkReleaseMapper">
+
+    <resultMap id="BaseResultMap" type="org.hjhy.homeworkplatform.generator.domain.HomeworkRelease">
+        <id property="homeworkId" column="homework_id" jdbcType="INTEGER"/>
+        <result property="classId" column="class_id" jdbcType="INTEGER"/>
+        <result property="homeworkName" column="homework_name" jdbcType="VARCHAR"/>
+        <result property="creatorId" column="creator_id" jdbcType="INTEGER"/>
+        <result property="endTime" column="end_time" jdbcType="TIMESTAMP"/>
+        <result property="isValid" column="is_valid" jdbcType="TINYINT"/>
+        <result property="description" column="description" jdbcType="VARCHAR"/>
+        <result property="launchTime" column="launch_time" jdbcType="TIMESTAMP"/>
+        <result property="lastUpdateTime" column="last_update_time" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <select id="getUnSubmittedHomework" resultMap="BaseResultMap">
+        SELECT hr.homework_id,
+               hr.class_id,
+               hr.homework_name,
+               hr.creator_id,
+               hr.end_time,
+               hr.is_valid,
+               hr.description,
+               hr.launch_time,
+               hr.last_update_time
+        FROM user_class_role ucr
+                 JOIN homework_release hr ON ucr.class_id = hr.class_id
+        WHERE ucr.user_id = #{userId}
+          AND role_id = #{roleId}
+          AND hr.homework_id NOT IN (SELECT DISTINCT belonging_id
+                                     FROM homework_submission hs
+                                     WHERE hs.user_id = #{userId})
+        ORDER BY hr.end_time DESC
+    </select>
+
+</mapper>
