@@ -108,11 +108,4 @@ public abstract class AbstractSocialLoginStrategyImpl implements SocialLoginStra
         userService.save(user);
         return user;
     }
-
-    @Override
-    public User refreshToken(String refreshToken, LoginTypeEnum loginType) {
-        //使用用户的refreshToken获取accessToken
-        return null;
-
-    }
 }
