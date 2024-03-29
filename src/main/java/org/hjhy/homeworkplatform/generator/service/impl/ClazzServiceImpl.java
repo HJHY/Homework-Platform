@@ -1,6 +1,7 @@
 package org.hjhy.homeworkplatform.generator.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import org.springframework.util.ObjectUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -90,8 +92,27 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     }
 
     @Override
+    @Transactional
     public void deleteClass(Integer classId) {
         Clazz clazz = Clazz.builder().classId(classId).isValid(0).build();
+
+        //检查班级内是否存在未结束作业
+        LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>()
+                .eq(HomeworkRelease::getClassId, classId)
+                .eq(HomeworkRelease::getIsValid, 1)
+                .ge(HomeworkRelease::getEndTime, new Date());
+        List<HomeworkRelease> existingHomeworkList = homeworkReleaseService.list(queryWrapper);
+        if (!ObjectUtils.isEmpty(existingHomeworkList)) {
+            throw new BaseException("班级内存在未结束的作业,请先结束作业再删除班级");
+        }
+        //不存在未结束的作业,则删除所有的作业
+        LambdaUpdateWrapper<HomeworkRelease> homeworkUpdateQuery = new LambdaUpdateWrapper<HomeworkRelease>().set(HomeworkRelease::getIsValid, 0).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1);
+        homeworkReleaseService.update(homeworkUpdateQuery);
+
+        //不存在未结束的作业,删除班级内权限记录
+        LambdaUpdateWrapper<UserClassRole> userClassRoleUpdateQuery = new LambdaUpdateWrapper<UserClassRole>().set(UserClassRole::getIsValid, 0).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1);
+        userClassRoleService.update(userClassRoleUpdateQuery);
+
         this.updateById(clazz);
     }
 
