@@ -1,6 +1,7 @@
 package org.hjhy.homeworkplatform.generator.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.constant.RedisPrefixConst;
@@ -8,16 +9,14 @@ import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.constant.StatusCode;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.ClassDto;
+import org.hjhy.homeworkplatform.dto.ClazzConditionDto;
 import org.hjhy.homeworkplatform.exception.BaseException;
-import org.hjhy.homeworkplatform.generator.domain.Clazz;
-import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
-import org.hjhy.homeworkplatform.generator.domain.Role;
-import org.hjhy.homeworkplatform.generator.domain.UserClassRole;
+import org.hjhy.homeworkplatform.generator.domain.*;
 import org.hjhy.homeworkplatform.generator.mapper.ClazzMapper;
 import org.hjhy.homeworkplatform.generator.service.*;
 import org.hjhy.homeworkplatform.utils.CommonUtils;
 import org.hjhy.homeworkplatform.vo.ClassInfoVo;
-import org.hjhy.homeworkplatform.vo.RelationVo;
+import org.hjhy.homeworkplatform.vo.PageResult;
 import org.hjhy.homeworkplatform.vo.UserVo;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -25,8 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.*;
 
 /**
  * @author 13746
@@ -51,6 +51,12 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     private final RedisTemplate<String, Object> redisTemplate;
     private final RoleService roleService;
     private final HomeworkReleaseService homeworkReleaseService;
+
+    //创建一个线程池
+    private final ThreadPoolExecutor executorForUser = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    //创建一个线程池
+    private final ThreadPoolExecutor executorForClazz = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+
 
     public ClazzServiceImpl(UserClassRoleService userClassRoleService, UserService userService, RedisTemplate<String, Object> redisTemplate, RoleService roleService, HomeworkReleaseService homeworkReleaseService) {
         this.userClassRoleService = userClassRoleService;
@@ -99,61 +105,25 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         var clazzList = this.listByIds(classIdList);
 
         //这里为了方便前端,将一些需要前端自行查询的也做了
-        return clazzList.stream()
-                .map(ClassInfoVo::new)
-                .peek(classInfoVo -> classInfoVo.setCreatorName(userService.getById(classInfoVo.getCreatorId()).getRealname()))
-                .toList();
+        return clazzList.stream().map(ClassInfoVo::new).peek(classInfoVo -> classInfoVo.setCreatorName(userService.getById(classInfoVo.getCreatorId()).getRealname())).toList();
     }
 
     @Override
     public ClassInfoVo detail(Integer classId) {
         var clazz = this.getById(classId);
         //查询加入特定班级的用户详细信息
-        var userIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>()
-                        .eq(UserClassRole::getClassId, classId))
-                .stream()
-                .map(UserClassRole::getUserId)
+        var userIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getClassId, classId)).stream().map(UserClassRole::getUserId)
                 //过滤掉创建者
                 .filter(userId -> !userId.equals(clazz.getCreatorId())).toList();
         //查询相关用户详细信息
         var userVoList = userService.listByIds(userIdList).stream().map(UserVo::new).toList();
         //查询班级作业
-        List<HomeworkRelease> homeworkList = homeworkReleaseService.list(
-                new LambdaQueryWrapper<HomeworkRelease>()
-                        .select(HomeworkRelease::getHomeworkId, HomeworkRelease::getHomeworkName, HomeworkRelease::getEndTime)
-                        .eq(HomeworkRelease::getClassId, classId)
-                        .eq(HomeworkRelease::getIsValid, 1));
+        List<HomeworkRelease> homeworkList = homeworkReleaseService.list(new LambdaQueryWrapper<HomeworkRelease>().select(HomeworkRelease::getHomeworkId, HomeworkRelease::getHomeworkName, HomeworkRelease::getEndTime).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1));
         //查询用户在班级中的角色
-        var roleIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>()
-                        .select(UserClassRole::getRoleId)
-                        .eq(UserClassRole::getClassId, classId)
-                        .eq(UserClassRole::getIsValid, 1))
-                .stream().map(UserClassRole::getRoleId).toList();
+        var roleIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getRoleId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1)).stream().map(UserClassRole::getRoleId).toList();
         List<Role> roleList = roleService.listByIds(roleIdList);
 
         return new ClassInfoVo(clazz, userVoList, homeworkList, roleList);
-    }
-
-    @Override
-    public RelationVo relation(Integer userId) {
-        /*查询自己创建的班级id列表*/
-        CompletableFuture<List<Integer>> createdClassIdListTask = CompletableFuture.supplyAsync(() -> this.list(new LambdaQueryWrapper<Clazz>()
-                        .select(Clazz::getClassId)
-                        .eq(Clazz::getCreatorId, userId)
-                        .eq(Clazz::getIsValid, 1))
-                .stream().map(Clazz::getClassId).toList());
-
-        /*查询自己已经加入的班级id列表*/
-        CompletableFuture<List<Integer>> joinedClassIdListTask = CompletableFuture.supplyAsync(() -> userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>()
-                        .select(UserClassRole::getClassId)
-                        .eq(UserClassRole::getUserId, userId)
-                        .eq(UserClassRole::getIsValid, 1)
-                        .eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER.getRoleId()))
-                .stream().map(UserClassRole::getClassId).toList());
-
-        CompletableFuture.allOf(createdClassIdListTask, joinedClassIdListTask).join();
-
-        return new RelationVo(createdClassIdListTask.join(), joinedClassIdListTask.join());
     }
 
     @Override
@@ -167,20 +137,13 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         var classId = getClassIdByShareCode(shareCode);
 
         //检查是否已经加入班级
-        var existsed = userClassRoleService.exists(new LambdaQueryWrapper<UserClassRole>()
-                .eq(UserClassRole::getUserId, userId)
-                .eq(UserClassRole::getClassId, classId)
-                .eq(UserClassRole::getIsValid, 1));
+        var existsed = userClassRoleService.exists(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getUserId, userId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1));
         if (existsed) {
             throw new BaseException(StatusCode.ALREADY_JOIN_CLASS);
         }
 
         //加入班级
-        var userClassRole = UserClassRole.builder()
-                .userId(userId)
-                .classId(classId)
-                .roleId(RoleConstant.CLASS_MEMBER.getRoleId())
-                .build();
+        var userClassRole = UserClassRole.builder().userId(userId).classId(classId).roleId(RoleConstant.CLASS_MEMBER.getRoleId()).build();
         userClassRoleService.save(userClassRole);
     }
 
@@ -193,10 +156,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             throw new BaseException("班级创建者无法退出班级");
         }
 
-        var userClassRoleList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>()
-                .eq(UserClassRole::getUserId, userId)
-                .eq(UserClassRole::getClassId, classId)
-                .eq(UserClassRole::getIsValid, 1));
+        var userClassRoleList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getUserId, userId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1));
 
         //已经退出班级
         if (ObjectUtils.isEmpty(userClassRoleList)) {
@@ -259,12 +219,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
     @Override
     public List<Integer> queryClassAdmin(Integer classId) {
-        return userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>()
-                        .select(UserClassRole::getUserId)
-                        .eq(UserClassRole::getClassId, classId)
-                        .eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId())
-                        .eq(UserClassRole::getIsValid, 1))
-                .stream().map(UserClassRole::getUserId).toList();
+        return userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getUserId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()).eq(UserClassRole::getIsValid, 1)).stream().map(UserClassRole::getUserId).toList();
     }
 
     @Transactional
@@ -280,10 +235,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         }
 
         //判断将要设置为管理员的用户是否都已经在班级内
-        List<UserClassRole> userClassRoles = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>()
-                .select(UserClassRole::getId, UserClassRole::getUserId)
-                .eq(UserClassRole::getClassId, classId)
-                .eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER.getRoleId()));
+        List<UserClassRole> userClassRoles = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getId, UserClassRole::getUserId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER.getRoleId()));
         for (Integer userId : userIdList) {
             if (userClassRoles.stream().noneMatch(userClassRole -> userClassRole.getUserId().equals(userId))) {
                 log.info("用户{{}}不在班级内", userId);
@@ -292,15 +244,95 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         }
 
         //删除班级中的管理员再添加
-        userClassRoleService.remove(new LambdaQueryWrapper<UserClassRole>()
-                .eq(UserClassRole::getClassId, classId)
-                .eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()));
+        userClassRoleService.remove(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()));
 
         //添加
-        var userClassRoleList = userIdList.stream()
-                .map(userId -> UserClassRole.builder().userId(userId).classId(classId).roleId(RoleConstant.CLASS_ADMIN.getRoleId()).build())
-                .toList();
+        var userClassRoleList = userIdList.stream().map(userId -> UserClassRole.builder().userId(userId).classId(classId).roleId(RoleConstant.CLASS_ADMIN.getRoleId()).build()).toList();
         userClassRoleService.saveBatch(userClassRoleList);
+    }
+
+    @Override
+    public PageResult<ClassInfoVo> getJoinedClasses(Integer userId, Page<UserClassRole> page) {
+        /*查询自己已经加入的班级id列表*/
+        Page<UserClassRole> pageResult = userClassRoleService.page(page, new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getUserId, userId).eq(UserClassRole::getIsValid, 1).eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER.getRoleId()));
+        long total = pageResult.getTotal();
+        List<ClassInfoVo> list = pageResult.getRecords().stream().map(userClassRole -> ClassInfoVo.builder().creatorId(userClassRole.getUserId()).classId(userClassRole.getClassId()).build()).toList();
+
+        //查询用户信息
+        List<CompletableFuture<Void>> asyncUserTaskList = new ArrayList<>();
+        for (ClassInfoVo classInfoVo : list) {
+            CompletableFuture<Void> runAsync = CompletableFuture.runAsync(() -> {
+                User user = userService.getById(classInfoVo.getCreatorId());
+                classInfoVo.setCreatorName(user.getRealname());
+            }, executorForUser);
+            asyncUserTaskList.add(runAsync);
+        }
+
+        CompletableFuture.allOf(asyncUserTaskList.toArray(new CompletableFuture[0])).exceptionally(throwable -> {
+            log.error("在查询加入的班级任务中,线程池中的获取用户信息的操作执行异常", throwable);
+            throw new BaseException("查询用户信息任务执行异常");
+        }).join();
+
+        //查询班级信息
+        List<CompletableFuture<Void>> asyncClazzTaskList = new ArrayList<>();
+        for (ClassInfoVo classInfoVo : list) {
+            CompletableFuture<Void> runAsync = CompletableFuture.runAsync(() -> {
+                Clazz clazz = this.getById(classInfoVo.getClassId());
+                classInfoVo.setClassName(clazz.getClassName());
+            }, executorForClazz);
+            asyncClazzTaskList.add(runAsync);
+        }
+        CompletableFuture.allOf(asyncClazzTaskList.toArray(new CompletableFuture[0])).exceptionally(throwable -> {
+            log.error("在查询加入的班级任务中,线程池中的获取班级信息的操作执行异常", throwable);
+            throw new BaseException("查询班级信息任务执行异常");
+        }).join();
+
+        return new PageResult<>(list, list.size(), total);
+    }
+
+    @Override
+    public PageResult<ClassInfoVo> getCreatedClasses(Integer userId, Page<Clazz> page) throws InterruptedException {
+        /*查询自己创建的班级id列表*/
+        Page<Clazz> pageResult = this.page(page, new LambdaQueryWrapper<Clazz>().eq(Clazz::getCreatorId, userId).eq(Clazz::getIsValid, 1));
+        long total = pageResult.getTotal();
+        List<ClassInfoVo> records = pageResult.getRecords().stream().map(ClassInfoVo::new).toList();
+
+        //采用CountDownLatch来等待线程池中的任务执行完毕
+        CountDownLatch countDownLatch = new CountDownLatch(records.size());
+        for (ClassInfoVo clazzInfo : records) {
+            executorForClazz.submit(() -> {
+                User user = userService.getById(clazzInfo.getCreatorId());
+                clazzInfo.setCreatorName(user.getRealname());
+                countDownLatch.countDown();
+            });
+        }
+
+        boolean await = countDownLatch.await(3, TimeUnit.SECONDS);
+        if (!await) {
+            log.error("在查询创建的班级任务中,线程池中的获取用户信息的操作执行超时");
+            throw new BaseException("任务执行超时");
+        }
+        return new PageResult<>(records, records.size(), total);
+    }
+
+    @Override
+    public PageResult<Clazz> condition(Page<Clazz> page, ClazzConditionDto clazzConditionDto) {
+        if (ObjectUtils.isEmpty(clazzConditionDto)) {
+            throw new BaseException("查询条件不能为空");
+        }
+
+        Page<Clazz> pageResult = this.page(page, new LambdaQueryWrapper<Clazz>()
+                .eq(clazzConditionDto.getClassName() != null, Clazz::getClassName, clazzConditionDto.getClassName())
+                .eq(clazzConditionDto.getCreatorId() != null, Clazz::getCreatorId, clazzConditionDto.getCreatorId())
+                .eq(clazzConditionDto.getDescription() != null, Clazz::getDescription, clazzConditionDto.getDescription())
+                .eq(clazzConditionDto.getIsValid() != null, Clazz::getIsValid, clazzConditionDto.getIsValid()));
+
+        //进行权限检查,前置切面无法完成检查
+        for (Clazz clazz : pageResult.getRecords()) {
+            userClassRoleService.checkUserClassPrivilege(RequestContext.getAuthInfo().getUserId(), clazz.getClassId(), new RoleConstant[]{RoleConstant.CLASS_CREATOR, RoleConstant.CLASS_ADMIN, RoleConstant.CLASS_MEMBER}, null);
+        }
+
+        return new PageResult<>(pageResult.getRecords(), pageResult.getRecords().size(), pageResult.getTotal());
     }
 }
 

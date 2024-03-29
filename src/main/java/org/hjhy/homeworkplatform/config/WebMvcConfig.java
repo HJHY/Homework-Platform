@@ -51,11 +51,11 @@ public class WebMvcConfig implements WebMvcConfigurer, Jackson2ObjectMapperBuild
         //班级拦截器
         registry.addInterceptor(classInterceptor)
                 .addPathPatterns("/classes/**")
-                .excludePathPatterns("/classes", "/classes/**/join", "/classes/simpleInfo", "/classes/relation");
+                .excludePathPatterns("/classes", "/classes/**/join", "/classes/simpleInfo", "/classes/relation", "/classes/created", "/classes/joined", "/classes/condition");
         //作业拦截器
         registry.addInterceptor(homeworkInterceptor)
                 .addPathPatterns("/homeworks/**")
-                .excludePathPatterns("/homeworks", "/homeworks/callback/**", "/homeworks/committed", "/homeworks/uncommitted", "/homeworks/myLaunch", "/homeworks/callback");
+                .excludePathPatterns("/homeworks", "/homeworks/callback/**", "/homeworks/committed", "/homeworks/uncommitted", "/homeworks/myLaunch", "/homeworks/condition", "/homeworks/callback");
     }
 
     @Override

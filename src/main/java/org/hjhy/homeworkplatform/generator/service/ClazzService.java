@@ -1,10 +1,13 @@
 package org.hjhy.homeworkplatform.generator.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.hjhy.homeworkplatform.dto.ClassDto;
+import org.hjhy.homeworkplatform.dto.ClazzConditionDto;
 import org.hjhy.homeworkplatform.generator.domain.Clazz;
+import org.hjhy.homeworkplatform.generator.domain.UserClassRole;
 import org.hjhy.homeworkplatform.vo.ClassInfoVo;
-import org.hjhy.homeworkplatform.vo.RelationVo;
+import org.hjhy.homeworkplatform.vo.PageResult;
 
 import java.util.List;
 
@@ -27,8 +30,6 @@ public interface ClazzService extends IService<Clazz> {
 
     ClassInfoVo detail(Integer classId);
 
-    RelationVo relation(Integer userId);
-
     String shareClass(Integer userId, Integer classId);
 
     void joinClass(Integer userId, String shareCode);
@@ -38,4 +39,10 @@ public interface ClazzService extends IService<Clazz> {
     List<Integer> queryClassAdmin(Integer classId);
 
     void setClassAdmin(Integer classId, List<Integer> userIdList);
+
+    PageResult<ClassInfoVo> getJoinedClasses(Integer userId, Page<UserClassRole> page);
+
+    PageResult<ClassInfoVo> getCreatedClasses(Integer userId, Page<Clazz> page) throws InterruptedException;
+
+    PageResult<Clazz> condition(Page<Clazz> page, ClazzConditionDto ClazzConditionDto);
 }

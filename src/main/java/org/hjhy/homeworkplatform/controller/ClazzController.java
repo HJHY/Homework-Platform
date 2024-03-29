@@ -1,5 +1,6 @@
 package org.hjhy.homeworkplatform.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -7,10 +8,13 @@ import org.hjhy.homeworkplatform.annotation.HasRole;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.ClassDto;
+import org.hjhy.homeworkplatform.dto.ClazzConditionDto;
 import org.hjhy.homeworkplatform.generator.domain.Clazz;
+import org.hjhy.homeworkplatform.generator.domain.UserClassRole;
 import org.hjhy.homeworkplatform.generator.service.ClazzService;
+import org.hjhy.homeworkplatform.utils.CommonUtils;
 import org.hjhy.homeworkplatform.vo.ClassInfoVo;
-import org.hjhy.homeworkplatform.vo.RelationVo;
+import org.hjhy.homeworkplatform.vo.PageResult;
 import org.hjhy.homeworkplatform.vo.Result;
 import org.springframework.web.bind.annotation.*;
 
@@ -69,6 +73,17 @@ public class ClazzController {
         return Result.ok(classInfoDtoList);
     }
 
+    //条件查询的权限检查由业务完成(因此没办法获取到classId,无法进行权限检查)
+    @Operation(summary = "条件查询班级", description = "条件查询班级接口描述")
+    @GetMapping(value = "/classes/condition")
+    public Result<PageResult<Clazz>> condition(ClazzConditionDto clazzConditionDto,
+                                               @RequestParam(required = false) Integer current,
+                                               @RequestParam(required = false) Integer pageSize) {
+        Page<Clazz> page = CommonUtils.getPage(current, pageSize);
+        var classInfoDtoList = clazzService.condition(page, clazzConditionDto);
+        return Result.ok(classInfoDtoList);
+    }
+
     @Operation(summary = "查找班级简要信息", description = "查找班级简要信息接口描述")
     @GetMapping("/classes/simpleInfo")
     public Result<List<ClassInfoVo>> simpleInfo(@RequestParam(name = "classIdList") List<Integer> classIdList) {
@@ -76,11 +91,22 @@ public class ClazzController {
         return Result.ok(classInfoDtoList);
     }
 
-    @Operation(summary = "查找创建和加入的班级", description = "查找创建和加入的班级")
-    @GetMapping("/classes/relation")
-    public Result<RelationVo> relation() {
-        var relation = clazzService.relation(RequestContext.getAuthInfo().getUserId());
-        return Result.ok(relation);
+    @Operation(summary = "查找创建的班级", description = "查找创建的班级")
+    @GetMapping("/classes/created")
+    public Result<PageResult<ClassInfoVo>> createdClasses(@RequestParam(required = false) Integer currentPage,
+                                                          @RequestParam(required = false) Integer pageSize) throws InterruptedException {
+        Page<Clazz> page = CommonUtils.getPage(currentPage, pageSize);
+        var classInfoDtoList = clazzService.getCreatedClasses(RequestContext.getAuthInfo().getUserId(), page);
+        return Result.ok(classInfoDtoList);
+    }
+
+    @Operation(summary = "查询加入的班级", description = "查询加入的班级")
+    @GetMapping("/classes/joined")
+    public Result<PageResult<ClassInfoVo>> joinedClasses(@RequestParam(required = false) Integer currentPage,
+                                                         @RequestParam(required = false) Integer pageSize) {
+        Page<UserClassRole> page = CommonUtils.getPage(currentPage, pageSize);
+        var classInfoDtoList = clazzService.getJoinedClasses(RequestContext.getAuthInfo().getUserId(), page);
+        return Result.ok(classInfoDtoList);
     }
 
     @Operation(summary = "分享班级", description = "获取班级验证码")

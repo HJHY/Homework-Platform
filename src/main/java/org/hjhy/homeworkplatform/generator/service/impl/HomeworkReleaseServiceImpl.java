@@ -10,9 +10,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.constant.MessageConstant;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.dto.EmailDto;
+import org.hjhy.homeworkplatform.dto.HomeworkReleaseConditionDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReminderDto;
 import org.hjhy.homeworkplatform.enums.MessageRecordEnum;
+import org.hjhy.homeworkplatform.exception.BaseException;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkReminderMessage;
 import org.hjhy.homeworkplatform.generator.domain.PushSetting;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -187,13 +190,47 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
 
         var pageResult = this.page(page, queryWrapper);
         log.info(String.valueOf(pageResult));
-        return new PageResult<>(pageResult.getRecords(), pageResult.getTotal());
+        return new PageResult<>(pageResult.getRecords(), pageResult.getRecords().size(), pageResult.getTotal());
     }
 
     @Override
     public PageResult<HomeworkRelease> getUncommittedHomework(Integer userId, Page<HomeworkRelease> page) {
         IPage<HomeworkRelease> unSubmittedHomework = this.getBaseMapper().getUnSubmittedHomework(userId, page, RoleConstant.CLASS_MEMBER.getRoleId());
-        return new PageResult<>(unSubmittedHomework.getRecords(), unSubmittedHomework.getTotal());
+        return new PageResult<>(unSubmittedHomework.getRecords(), unSubmittedHomework.getRecords().size(), unSubmittedHomework.getTotal());
+    }
+
+    @Override
+    public PageResult<HomeworkRelease> condition(HomeworkReleaseConditionDto homeworkReleaseConditionDto, Page<HomeworkRelease> page) throws InterruptedException {
+        if (ObjectUtils.isEmpty(homeworkReleaseConditionDto)) {
+            throw new BaseException("查询条件不能为空");
+        }
+
+        LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>()
+                .eq(homeworkReleaseConditionDto.getHomeworkId() != null, HomeworkRelease::getHomeworkId, homeworkReleaseConditionDto.getHomeworkId())
+                .eq(homeworkReleaseConditionDto.getClassId() != null, HomeworkRelease::getClassId, homeworkReleaseConditionDto.getClassId())
+                .eq(homeworkReleaseConditionDto.getHomeworkName() != null, HomeworkRelease::getHomeworkName, homeworkReleaseConditionDto.getHomeworkName())
+                .eq(homeworkReleaseConditionDto.getCreatorId() != null, HomeworkRelease::getCreatorId, homeworkReleaseConditionDto.getCreatorId())
+                .eq(homeworkReleaseConditionDto.getIsValid() != null, HomeworkRelease::getIsValid, homeworkReleaseConditionDto.getIsValid())
+                .eq(homeworkReleaseConditionDto.getDescription() != null, HomeworkRelease::getDescription, homeworkReleaseConditionDto.getDescription())
+                .ge(homeworkReleaseConditionDto.getLaunchTime() != null, HomeworkRelease::getLaunchTime, homeworkReleaseConditionDto.getLaunchTime())
+                .le(homeworkReleaseConditionDto.getEndTime() != null, HomeworkRelease::getEndTime, homeworkReleaseConditionDto.getEndTime());
+        Page<HomeworkRelease> pageResult = this.page(page, queryWrapper);
+
+        //检查权限
+        CountDownLatch countDownLatch = new CountDownLatch(pageResult.getRecords().size());
+        pageResult.getRecords().forEach(homeworkRelease -> executor.submit(() -> {
+            var clazz = clazzService.getById(homeworkRelease.getClassId());
+            userClassRoleService.checkUserClassPrivilege(homeworkRelease.getCreatorId(), clazz.getClassId(), new RoleConstant[]{RoleConstant.CLASS_CREATOR}, null);
+            countDownLatch.countDown();
+        }));
+
+        boolean await = countDownLatch.await(3, TimeUnit.SECONDS);
+        if (!await) {
+            log.error("作业条件查询时权限检查超时");
+            throw new BaseException("作业条件查询时权限检查超时");
+        }
+
+        return new PageResult<>(pageResult.getRecords(), pageResult.getRecords().size(), pageResult.getTotal());
     }
 }
 

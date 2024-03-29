@@ -11,6 +11,7 @@ import org.hjhy.homeworkplatform.annotation.HasRole;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.FileUploadCallbackBodyDto;
+import org.hjhy.homeworkplatform.dto.HomeworkReleaseConditionDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseDto;
 import org.hjhy.homeworkplatform.exception.BaseException;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
@@ -77,6 +78,17 @@ public class HomeworkController {
         return Result.ok(homework);
     }
 
+    //条件查询的权限检查由业务完成(因此没办法获取到classId,无法进行权限检查)
+    @Operation(summary = "条件查询作业", description = "条件查询作业接口描述")
+    @GetMapping("/homeworks/condition")
+    public Result<PageResult<HomeworkRelease>> condition(HomeworkReleaseConditionDto homeworkReleaseConditionDto,
+                                                         @RequestParam(required = false) Integer current,
+                                                         @RequestParam(required = false) Integer pageSize) throws InterruptedException {
+        Page<HomeworkRelease> page = CommonUtils.getPage(current, pageSize);
+        PageResult<HomeworkRelease> homeworkReleasePageResult = homeworkReleaseService.condition(homeworkReleaseConditionDto, page);
+        return Result.ok(homeworkReleasePageResult);
+    }
+
     @Operation(summary = "查找已提交作业列表", description = "查找已提交作业列表接口描述")
     @GetMapping("/homeworks/committed")
     public Result<PageResult<HomeworkSubmissionVo>> submitted(@RequestParam(required = false) Integer current,
@@ -110,7 +122,7 @@ public class HomeworkController {
     /*********************************下面是作业提交的部分****************************************/
 
     @Operation(summary = "提交作业", description = "提交作业接口描述")
-//    @HasRole(roles = {RoleConstant.CLASS_MEMBER})
+    @HasRole(roles = {RoleConstant.CLASS_MEMBER})
     @PostMapping("/homeworks/{homeworkId}/submit")
     public Result<FileUploadVo> submit(@PathVariable Integer homeworkId,
                                        @RequestParam(required = false) String description,

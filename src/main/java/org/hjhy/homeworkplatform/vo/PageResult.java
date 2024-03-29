@@ -25,8 +25,13 @@ public class PageResult<T> {
     private List<T> recordList;
 
     /**
+     * 当前页的记录数量
+     */
+    private int currentRecordCount;
+
+    /**
      * 总数
      */
-    private Long count;
+    private Long total;
 
 }

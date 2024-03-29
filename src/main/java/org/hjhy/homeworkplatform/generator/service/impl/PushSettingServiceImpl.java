@@ -37,9 +37,8 @@ public class PushSettingServiceImpl extends ServiceImpl<PushSettingMapper, PushS
     }
 
     @Override
-    public List<Integer> listDdls(Integer userId) {
-        var pushSettingList = this.list(new LambdaQueryWrapper<PushSetting>().eq(PushSetting::getUserId, userId));
-        return pushSettingList.stream().map(PushSetting::getAdvanceTime).toList();
+    public List<PushSetting> listDdls(Integer userId) {
+        return this.list(new LambdaQueryWrapper<PushSetting>().eq(PushSetting::getUserId, userId));
     }
 }
 

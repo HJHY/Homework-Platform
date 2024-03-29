@@ -64,6 +64,11 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
             throw new BaseException(StatusCode.NOT_JOIN_CLASS);
         }
 
+        //传递过来的request参数为null,说明是前置切面没法检查权限但是业务中又需要检查权限,直接放行即可
+        if (ObjectUtils.isEmpty(request)) {
+            return;
+        }
+
         //检查用户权限
         if (Arrays.stream(roles).noneMatch(roleConstant -> userClassRoleList.contains(roleConstant.getRoleId()))) {
             log.error("用户{{}}没有访问{{}}的权限", userId, request.getRequestURI());

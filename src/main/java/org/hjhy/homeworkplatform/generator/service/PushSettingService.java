@@ -16,5 +16,5 @@ public interface PushSettingService extends IService<PushSetting> {
 
     void setDdls(Integer userId, List<Integer> ddlSettingList);
 
-    List<Integer> listDdls(Integer userId);
+    List<PushSetting> listDdls(Integer userId);
 }

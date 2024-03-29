@@ -2,6 +2,7 @@ package org.hjhy.homeworkplatform.generator.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.hjhy.homeworkplatform.dto.HomeworkReleaseConditionDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseDto;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
 import org.hjhy.homeworkplatform.vo.HomeworkReleaseVo;
@@ -25,4 +26,6 @@ public interface HomeworkReleaseService extends IService<HomeworkRelease> {
     PageResult<HomeworkRelease> myLaunch(Integer userId, Page<HomeworkRelease> page);
 
     PageResult<HomeworkRelease> getUncommittedHomework(Integer userId, Page<HomeworkRelease> page);
+
+    PageResult<HomeworkRelease> condition(HomeworkReleaseConditionDto homeworkReleaseConditionDto, Page<HomeworkRelease> page) throws InterruptedException;
 }

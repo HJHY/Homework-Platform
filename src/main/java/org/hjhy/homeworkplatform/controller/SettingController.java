@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.exception.BaseException;
+import org.hjhy.homeworkplatform.generator.domain.PushSetting;
 import org.hjhy.homeworkplatform.generator.service.PushSettingService;
 import org.hjhy.homeworkplatform.vo.Result;
 import org.springframework.web.bind.annotation.*;
@@ -33,7 +34,7 @@ public class SettingController {
 
     @Operation(summary = "查询DDL提醒时间", description = "查询DDL提醒时间")
     @GetMapping("/ddls")
-    public Result<?> listDdls() {
+    public Result<List<PushSetting>> listDdls() {
         var ddlPushList = pushSettingService.listDdls(RequestContext.getAuthInfo().getUserId());
         return Result.ok(ddlPushList, "时间以小时为单位");
     }

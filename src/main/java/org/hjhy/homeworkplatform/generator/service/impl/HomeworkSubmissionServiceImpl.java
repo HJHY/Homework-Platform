@@ -155,7 +155,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
         IPage<HomeworkSubmissionVo> committedHomework = this.baseMapper.getSubmittedHomework(userId, page);
         List<HomeworkSubmissionVo> records = committedHomework.getRecords();
         long total = committedHomework.getTotal();
-        return new PageResult<>(records, total);
+        return new PageResult<>(records, records.size(), total);
     }
 }
 
