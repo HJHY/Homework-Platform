@@ -19,6 +19,7 @@ import org.hjhy.homeworkplatform.utils.CommonUtils;
 import org.hjhy.homeworkplatform.vo.ClassInfoVo;
 import org.hjhy.homeworkplatform.vo.PageResult;
 import org.hjhy.homeworkplatform.vo.UserVo;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,11 +78,21 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         }
 
         var clazz = Clazz.builder().creatorId(userId).className(classDto.getClassName()).description(classDto.getDescription()).build();
-        this.save(clazz);
+        try {
+            this.save(clazz);
+        } catch (DuplicateKeyException e) {
+            log.error("用户{{}}重复提交创建班级请求{}", userId, classDto);
+            throw new BaseException(StatusCode.REPEAT_SUBMIT);
+        }
 
         //维护班级权限表
         var userClassRole = UserClassRole.builder().classId(clazz.getClassId()).userId(userId).roleId(RoleConstant.CLASS_CREATOR.getRoleId()).build();
-        userClassRoleService.save(userClassRole);
+        try {
+            userClassRoleService.save(userClassRole);
+        } catch (DuplicateKeyException e) {
+            log.error("用户{{}}在创建班级接口维护班级权限表时出现重复", userId);
+            throw new BaseException(StatusCode.REPEAT_SUBMIT);
+        }
     }
 
     @Transactional
@@ -165,7 +176,12 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
         //加入班级
         var userClassRole = UserClassRole.builder().userId(userId).classId(classId).roleId(RoleConstant.CLASS_MEMBER.getRoleId()).build();
-        userClassRoleService.save(userClassRole);
+        try {
+            userClassRoleService.save(userClassRole);
+        } catch (DuplicateKeyException e) {
+            log.error("用户{{}}重复提交加入班级请求", userId);
+            throw new BaseException(StatusCode.REPEAT_SUBMIT);
+        }
     }
 
     @Override

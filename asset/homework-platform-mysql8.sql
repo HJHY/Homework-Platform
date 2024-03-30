@@ -79,7 +79,9 @@ CREATE TABLE `clazz`
     `creator_id`       INT         NOT NULL COMMENT '创建者id',
     `is_valid`         BOOLEAN      DEFAULT TRUE COMMENT '是否有效',
     `create_time`      DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `last_update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间'
+    `last_update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
+    #加上唯一联合索引(既有联合索引的特性,又有唯一索引的去重的特性)
+    UNIQUE KEY `idx_creator_class_valid` (`creator_id`, `class_name`, `is_valid`)
 ) ENGINE = InnoDB
   CHARACTER SET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci
@@ -96,8 +98,9 @@ CREATE TABLE `user_class_role`
     `role_id`          INT      NOT NULL DEFAULT -1 COMMENT '角色id',
     `join_time`        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `last_update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
-    `is_valid`         BOOLEAN  NOT NULL DEFAULT TRUE COMMENT '是否有效'
-    #考虑加上联合索引
+    `is_valid` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否有效',
+    #加上唯一联合索引(既有联合索引的特性,又有唯一索引的去重的特性)
+    UNIQUE INDEX `idx_user_class_role` (`user_id`, `class_id`, `role_id`)
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 3
   CHARACTER SET = utf8mb4
@@ -116,7 +119,10 @@ CREATE TABLE `homework_release`
     `is_valid`         BOOLEAN      NOT NULL         DEFAULT TRUE COMMENT '是否有效',
     `description`      VARCHAR(256) NOT NULL         DEFAULT '' COMMENT '作业描述/备注',
     `launch_time`      DATETIME     NOT NULL         DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `last_update_time` DATETIME     NOT NULL         DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间'
+    `last_update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
+    #创建唯一联合索引来加速查询避免重复提交
+    UNIQUE INDEX `idx_class_homework_valid` (`class_id`, `homework_name`, `is_valid`),
+    INDEX `idx_creator_valid` (`creator_id`, `is_valid`)
 ) ENGINE = InnoDB
   CHARACTER SET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci

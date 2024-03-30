@@ -73,7 +73,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
 
     @Override
     @Transactional
-    public void saveHomework(Integer userId, HomeworkReleaseDto homeworkReleaseDto) {
+    public HomeworkRelease saveHomework(Integer userId, HomeworkReleaseDto homeworkReleaseDto) {
         //班级拦截器没有办法对班级信息做检查,因此这里需要手动检查班级的存在性
         // 获取HttpServletRequest对象
         HttpServletRequest request = ((ServletRequestAttributes) Objects.requireNonNull(RequestContextHolder.getRequestAttributes())).getRequest();
@@ -90,6 +90,8 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
 
         //推送作业发布通知
         notifyHomework(homeworkRelease);
+
+        return homeworkRelease;
     }
 
     /**
@@ -205,6 +207,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
             throw new BaseException("查询条件不能为空");
         }
 
+        //todo 这里应该可以改的简洁一些
         LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>()
                 .eq(homeworkReleaseConditionDto.getHomeworkId() != null, HomeworkRelease::getHomeworkId, homeworkReleaseConditionDto.getHomeworkId())
                 .eq(homeworkReleaseConditionDto.getClassId() != null, HomeworkRelease::getClassId, homeworkReleaseConditionDto.getClassId())

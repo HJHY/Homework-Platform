@@ -33,6 +33,7 @@ public class ClazzController {
         this.clazzService = clazzService;
     }
 
+    //接口幂等性可以由数据库唯一索引约束来保证
     @Operation(summary = "创建班级", description = "创建班级接口描述")
     @PostMapping("/classes")
     public Result<?> saveClass(@Valid @RequestBody ClassDto classDto) {
@@ -109,6 +110,7 @@ public class ClazzController {
         return Result.ok(classInfoDtoList);
     }
 
+    //todo 通过加锁的方式保证接口幂等性
     @Operation(summary = "分享班级", description = "获取班级验证码")
     @HasRole(roles = {RoleConstant.CLASS_CREATOR, RoleConstant.CLASS_ADMIN})
     @GetMapping("classes/{classId}/share")
@@ -117,6 +119,7 @@ public class ClazzController {
         return Result.ok(shareCode);
     }
 
+    //使用数据库唯一索引保证接口幂等性
     @Operation(summary = "加入班级", description = "加入班级接口描述")
     @GetMapping("/classes/{shareCode}/join")
     public Result<?> joinClass(@PathVariable String shareCode) {

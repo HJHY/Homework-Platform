@@ -15,7 +15,7 @@ import org.hjhy.homeworkplatform.vo.PageResult;
  */
 public interface HomeworkReleaseService extends IService<HomeworkRelease> {
 
-    void saveHomework(Integer userId, HomeworkReleaseDto homeworkReleaseDto);
+    HomeworkRelease saveHomework(Integer userId, HomeworkReleaseDto homeworkReleaseDto);
 
     void deleteHomework(Integer homeworkId);
 

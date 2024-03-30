@@ -41,16 +41,18 @@ public class HomeworkController {
         this.homeworkSubmissionService = homeworkSubmissionService;
     }
 
+    //接口幂等性可以由数据库唯一索引约束来保证
     @Operation(summary = "发布作业", description = "发布作业接口描述")
     @PostMapping("/homeworks")
-    public Result<?> saveHomework(@Valid @RequestBody HomeworkReleaseDto homeworkReleaseDto) {
+    public Result<HomeworkRelease> saveHomework(@Valid @RequestBody HomeworkReleaseDto homeworkReleaseDto) {
+        //这里切面没有办法进行权限检查,在业务中来进行权限检查
         if (ObjectUtils.isEmpty(homeworkReleaseDto.getClassId())) {
             log.warn("班级id为空不能通过");
             throw new BaseException("班级id不能为空");
         }
 
-        homeworkReleaseService.saveHomework(RequestContext.getAuthInfo().getUserId(), homeworkReleaseDto);
-        return Result.ok();
+        HomeworkRelease homeworkRelease = homeworkReleaseService.saveHomework(RequestContext.getAuthInfo().getUserId(), homeworkReleaseDto);
+        return Result.ok(homeworkRelease);
     }
 
     @Operation(summary = "删除作业", description = "删除作业接口描述")
@@ -120,7 +122,7 @@ public class HomeworkController {
     }
 
     /*********************************下面是作业提交的部分****************************************/
-
+    //todo 使用token接口的方式进行幂等性处理
     @Operation(summary = "提交作业", description = "提交作业接口描述")
     @HasRole(roles = {RoleConstant.CLASS_MEMBER})
     @PostMapping("/homeworks/{homeworkId}/submit")
@@ -138,6 +140,7 @@ public class HomeworkController {
         homeworkSubmissionService.callback(callbackBody, request, response);
     }
 
+    //todo 由于业务中需要进行并发处理，所以词用分布式锁来解决并发和接口幂等性问题
     @Operation(summary = "打包下载作业", description = "打包下载作业接口描述")
     @HasRole(roles = {RoleConstant.CLASS_CREATOR})
     @GetMapping("/homeworks/{homeworkId}/pack")
@@ -154,6 +157,7 @@ public class HomeworkController {
         return Result.ok(history);
     }
 
+    //todo 可以通过限流来做幂等性处理
     @Operation(summary = "通知班级成员提交作业", description = "通知班级成员提交作业接口描述")
     @HasRole(roles = {RoleConstant.CLASS_CREATOR, RoleConstant.CLASS_ADMIN})
     @GetMapping("/homeworks/{homeworkId}/notify")
