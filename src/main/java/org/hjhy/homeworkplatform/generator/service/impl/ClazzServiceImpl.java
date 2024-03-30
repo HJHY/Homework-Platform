@@ -19,6 +19,8 @@ import org.hjhy.homeworkplatform.utils.CommonUtils;
 import org.hjhy.homeworkplatform.vo.ClassInfoVo;
 import org.hjhy.homeworkplatform.vo.PageResult;
 import org.hjhy.homeworkplatform.vo.UserVo;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -54,6 +56,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     private final RedisTemplate<String, Object> redisTemplate;
     private final RoleService roleService;
     private final HomeworkReleaseService homeworkReleaseService;
+    private final RedissonClient redissonClient;
 
     //创建一个线程池
     private final ThreadPoolExecutor executorForUser = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
@@ -61,17 +64,18 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     private final ThreadPoolExecutor executorForClazz = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
 
-    public ClazzServiceImpl(UserClassRoleService userClassRoleService, UserService userService, RedisTemplate<String, Object> redisTemplate, RoleService roleService, HomeworkReleaseService homeworkReleaseService) {
+    public ClazzServiceImpl(UserClassRoleService userClassRoleService, UserService userService, RedisTemplate<String, Object> redisTemplate, RoleService roleService, HomeworkReleaseService homeworkReleaseService, RedissonClient redissonClient) {
         this.userClassRoleService = userClassRoleService;
         this.userService = userService;
         this.redisTemplate = redisTemplate;
         this.roleService = roleService;
         this.homeworkReleaseService = homeworkReleaseService;
+        this.redissonClient = redissonClient;
     }
 
     @Transactional(rollbackFor = Exception.class)
     @Override
-    public void createClass(Integer userId, ClassDto classDto) {
+    public Clazz createClass(Integer userId, ClassDto classDto) {
         //检查是否存在同名班级
         if (this.exists(new LambdaQueryWrapper<Clazz>().eq(Clazz::getClassName, classDto.getClassName()))) {
             throw new BaseException(StatusCode.DUPLICATED_CLASS_NAME);
@@ -93,6 +97,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             log.error("用户{{}}在创建班级接口维护班级权限表时出现重复", userId);
             throw new BaseException(StatusCode.REPEAT_SUBMIT);
         }
+
+        return clazz;
     }
 
     @Transactional
@@ -208,11 +214,23 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     private String generateAndSetShareCode(Integer classId) {
         //检查班级里面是否存在share code
         var shareCode = getShareCode(classId);
+        //采用双重检查锁来保证接口幂等(参考单例模式双检锁)
         if (ObjectUtils.isEmpty(shareCode)) {
-            //生成shared code
-            shareCode = CommonUtils.generateCode(SHARE_CODE_BIT);
-            //设置映射关系
-            setShareCode(classId, shareCode);
+            //加锁
+            RLock lock = redissonClient.getLock(RedisPrefixConst.CLASS_SHARED_CODE_LOCK_PREFIX + classId);
+            try {
+                lock.lock();
+                //再次检查
+                shareCode = getShareCode(classId);
+                if (ObjectUtils.isEmpty(shareCode)) {
+                    //生成shared code
+                    shareCode = CommonUtils.generateCode(SHARE_CODE_BIT);
+                    //设置映射关系
+                    setShareCode(classId, shareCode);
+                }
+            } finally {
+                lock.unlock();
+            }
         }
         return shareCode;
     }

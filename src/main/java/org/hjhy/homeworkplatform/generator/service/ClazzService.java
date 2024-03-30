@@ -18,7 +18,7 @@ import java.util.List;
  */
 public interface ClazzService extends IService<Clazz> {
 
-    void createClass(Integer userId, ClassDto classDto);
+    Clazz createClass(Integer userId, ClassDto classDto);
 
     void updateClass(Integer classId, ClassDto classDto);
 

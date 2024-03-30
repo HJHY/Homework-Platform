@@ -140,7 +140,7 @@ public class HomeworkController {
         homeworkSubmissionService.callback(callbackBody, request, response);
     }
 
-    //todo 由于业务中需要进行并发处理，所以词用分布式锁来解决并发和接口幂等性问题
+    //由于业务中需要进行并发处理，所以词用分布式锁来解决并发和接口幂等性问题
     @Operation(summary = "打包下载作业", description = "打包下载作业接口描述")
     @HasRole(roles = {RoleConstant.CLASS_CREATOR})
     @GetMapping("/homeworks/{homeworkId}/pack")

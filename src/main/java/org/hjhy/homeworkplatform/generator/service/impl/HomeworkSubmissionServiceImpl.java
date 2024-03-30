@@ -7,7 +7,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.hjhy.homeworkplatform.constant.HomeworkConst;
 import org.hjhy.homeworkplatform.constant.MessageConstant;
+import org.hjhy.homeworkplatform.constant.RedisPrefixConst;
 import org.hjhy.homeworkplatform.context.ObjectStorageContext;
 import org.hjhy.homeworkplatform.dto.EmailDto;
 import org.hjhy.homeworkplatform.dto.FileUploadCallbackBodyDto;
@@ -19,9 +21,13 @@ import org.hjhy.homeworkplatform.generator.domain.User;
 import org.hjhy.homeworkplatform.generator.mapper.HomeworkSubmissionMapper;
 import org.hjhy.homeworkplatform.generator.service.*;
 import org.hjhy.homeworkplatform.vo.*;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ObjectUtils;
 
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -44,17 +50,21 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
     private final ObjectStorageContext objectStorageContext;
     private final MessageService messageService;
     private final UserClassRoleService userClassRoleService;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedissonClient redissonClient;
 
     //创建一个线程池
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
-    public HomeworkSubmissionServiceImpl(UserService userService, ClazzService clazzService, @Lazy HomeworkReleaseService homeworkReleaseService, ObjectStorageContext objectStorageContext, MessageService messageService, UserClassRoleService userClassRoleService) {
+    public HomeworkSubmissionServiceImpl(UserService userService, ClazzService clazzService, @Lazy HomeworkReleaseService homeworkReleaseService, ObjectStorageContext objectStorageContext, MessageService messageService, UserClassRoleService userClassRoleService, RedisTemplate<String, Object> redisTemplate, RedissonClient redissonClient) {
         this.userService = userService;
         this.clazzService = clazzService;
         this.homeworkReleaseService = homeworkReleaseService;
         this.objectStorageContext = objectStorageContext;
         this.messageService = messageService;
         this.userClassRoleService = userClassRoleService;
+        this.redisTemplate = redisTemplate;
+        this.redissonClient = redissonClient;
     }
 
     @Override
@@ -101,7 +111,31 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
         var sourceDir = homeworkId + "/";
         var destFilePath = HOMEWORK_FILE_PACKAGE_DIR + homeworkId + "/" + packFileName;
 
-        return objectStorageContext.executeDownloadStrategy(sourceDir, destFilePath);
+        //检查OSS生成的url是否已经存在
+        FileDownloadVo fileDownloadVo = (FileDownloadVo) redisTemplate.opsForValue().get(RedisPrefixConst.HOMEWORK_FILE_DOWNLOAD_URL_PREFIX + homeworkId);
+        //url存在直接返回
+        if (!ObjectUtils.isEmpty(fileDownloadVo)) {
+            return fileDownloadVo;
+        }
+
+        //加锁
+        RLock lock = redissonClient.getLock(RedisPrefixConst.HOMEWORK_FILE_DOWNLOAD_LOCK_PREFIX + homeworkId);
+        try {
+            lock.lock();
+            //再次检查是否已经存在
+            fileDownloadVo = (FileDownloadVo) redisTemplate.opsForValue().get(RedisPrefixConst.HOMEWORK_FILE_DOWNLOAD_URL_PREFIX + homeworkId);
+            if (!ObjectUtils.isEmpty(fileDownloadVo)) {
+                return fileDownloadVo;
+            }
+            //执行下载策略
+            fileDownloadVo = objectStorageContext.executeDownloadStrategy(sourceDir, destFilePath);
+            //将下载url存入redis中
+            redisTemplate.opsForValue().set(RedisPrefixConst.HOMEWORK_FILE_DOWNLOAD_URL_PREFIX + homeworkId, fileDownloadVo, HomeworkConst.HOMEWORK_DOWNLOAD_TOKEN_EXPIRE_TIME, TimeUnit.SECONDS);
+        } finally {
+            lock.unlock();
+        }
+
+        return fileDownloadVo;
     }
 
     @Override

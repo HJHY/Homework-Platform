@@ -37,8 +37,8 @@ public class ClazzController {
     @Operation(summary = "创建班级", description = "创建班级接口描述")
     @PostMapping("/classes")
     public Result<?> saveClass(@Valid @RequestBody ClassDto classDto) {
-        clazzService.createClass(RequestContext.getAuthInfo().getUserId(), classDto);
-        return Result.ok();
+        Clazz clazz = clazzService.createClass(RequestContext.getAuthInfo().getUserId(), classDto);
+        return Result.ok(clazz);
     }
 
     @Operation(summary = "删除班级", description = "删除班级接口描述")
@@ -110,10 +110,10 @@ public class ClazzController {
         return Result.ok(classInfoDtoList);
     }
 
-    //todo 通过加锁的方式保证接口幂等性
+    //通过加锁的方式保证接口幂等性
     @Operation(summary = "分享班级", description = "获取班级验证码")
     @HasRole(roles = {RoleConstant.CLASS_CREATOR, RoleConstant.CLASS_ADMIN})
-    @GetMapping("classes/{classId}/share")
+    @GetMapping("/classes/{classId}/share")
     public Result<String> shareClass(@PathVariable Integer classId) {
         var shareCode = clazzService.shareClass(RequestContext.getAuthInfo().getUserId(), classId);
         return Result.ok(shareCode);

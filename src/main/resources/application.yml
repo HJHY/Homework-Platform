@@ -34,7 +34,8 @@ spring:
       host: xxxxxx
       password: xxxxxx
       connect-timeout: 5000
-
+  profiles:
+    active: dev
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
