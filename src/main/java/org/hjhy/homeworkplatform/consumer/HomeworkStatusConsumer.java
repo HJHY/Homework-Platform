@@ -59,6 +59,7 @@ public class HomeworkStatusConsumer {
         }
 
         try {
+            //通过业务的幂等性处理可以避免重复消费的影响
             channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
         } catch (IOException e) {
             //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志

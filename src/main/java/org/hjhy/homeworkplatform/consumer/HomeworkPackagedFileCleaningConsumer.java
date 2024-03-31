@@ -42,6 +42,7 @@ public class HomeworkPackagedFileCleaningConsumer {
         objectStorageStrategy.deleteHomework(homeworkPackagedFileCleanDto.getFilePath());
 
         try {
+            //这里即使重复消费也不会有影响
             channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
         } catch (IOException e) {
             //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志

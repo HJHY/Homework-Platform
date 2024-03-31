@@ -165,6 +165,17 @@ CREATE TABLE `homework_reminder_message`
   ROW_FORMAT = DYNAMIC
     COMMENT '作业提醒消息表';
 
+DROP TABLE IF EXISTS `consumed_messages`;
+CREATE TABLE consumed_message
+(
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    message_id    VARCHAR(256) NOT NULL UNIQUE,
+    `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+) ENGINE = InnoDB
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci
+  ROW_FORMAT = DYNAMIC
+    COMMENT '消息防重表';
 
 DROP TABLE IF EXISTS `push_setting`;
 CREATE TABLE `push_setting`

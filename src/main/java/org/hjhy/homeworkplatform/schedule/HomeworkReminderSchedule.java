@@ -66,12 +66,14 @@ public class HomeworkReminderSchedule {
                     .homeworkId(messageRecord.getHomeworkId()).build();
 
             //推送延时邮件至消息队列
+            String uuid = UUID.randomUUID().toString();
             rabbitTemplate.convertAndSend(RabbitMQConfig.PLUGIN_DELAY_EXCHANGE_NAME,
                     RabbitMQConfig.HOMEWORK_REMINDER_DELAY_ROUTING_KEY_NAME, homeworkReminderDto,
                     message -> {
                         message.getMessageProperties().setHeader("x-delay", delay);
+                        message.getMessageProperties().setCorrelationId(uuid);
                         return message;
-                    }, new CorrelationData(UUID.randomUUID().toString()));
+                    }, new CorrelationData(uuid));
 
             //更新消息状态并进行异步更新
             messageRecord.setLastUpdateTime(new Date());
