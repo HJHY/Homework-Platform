@@ -122,15 +122,15 @@ public class HomeworkController {
     }
 
     /*********************************下面是作业提交的部分****************************************/
-    //todo 使用token接口的方式进行幂等性处理
+    //使用token接口的方式进行幂等性处理
     @Operation(summary = "提交作业", description = "提交作业接口描述")
     @HasRole(roles = {RoleConstant.CLASS_MEMBER})
     @PostMapping("/homeworks/{homeworkId}/submit")
     public Result<FileUploadVo> submit(@PathVariable Integer homeworkId,
                                        @RequestParam(required = false) String description,
-                                       @RequestParam(required = false, defaultValue = ".docx") String fileSuffix) throws Exception {
-
-        var fileUploadVo = homeworkSubmissionService.submit(RequestContext.getAuthInfo().getUserId(), homeworkId, description, fileSuffix);
+                                       @RequestParam(required = false, defaultValue = ".docx") String fileSuffix,
+                                       @RequestParam(required = false) String idempotentToken) throws Exception {
+        var fileUploadVo = homeworkSubmissionService.submit(RequestContext.getAuthInfo().getUserId(), homeworkId, description, fileSuffix, idempotentToken);
         return Result.ok(fileUploadVo);
     }
 

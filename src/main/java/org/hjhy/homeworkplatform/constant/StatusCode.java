@@ -46,6 +46,16 @@ public enum StatusCode {
      */
     REPEAT_SUBMIT(4, "重复提交"),
 
+    /**
+     * 幂等性Token接口没有找到
+     */
+    IDEMPOTENT_TOKEN_NOT_FOUND(5, "幂等性Token接口没有找到"),
+
+    /**
+     * 幂等性接口令牌校验不通过
+     */
+    IDEMPOTENT_TOKEN_CHECK_FAILED(6, "幂等性接口令牌校验不通过"),
+
     /*----------------------------------------认证模块的异常状态码----------------------------------------*/
 
     /**

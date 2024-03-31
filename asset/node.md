@@ -31,3 +31,8 @@
 - Mybatis-plus中select方法传入的是一个数组,如果需要多个字段多次使用select会导致前面的select被覆盖最终差不出完整的属性值
 - 接口幂等的后端实现方案:主键索引+全局唯一ID,数据库锁,token防重令牌,唯一索引,防重表,分布式锁,限流次数为1等等;
 - 接口幂等的前端实现方案:按钮限制,时间戳+签名等等
+- lua脚本中KEYS和ARVG的区别在于集群环境下可能会使用KEYS进行分片,如果混用的话在集群环境下可能会出现一些问题
+  - redisTemplate.execute(redisScript, List.of(key), idempotentToken)
+    代码对第三个参数进行了List封装导致一直返回0,这是继Mybatis连续调用select()之后又重复犯的错,没有看清楚参数类型
+  - 在lua脚本执行失败的期间,在redis cli进行脚本调试发现redis.call()
+    返回的类型和redis原生的类型不一致导致一直没办法通过调试,在编程语言中可以通过,这个还没有深入了解协议如何处理类型的不同

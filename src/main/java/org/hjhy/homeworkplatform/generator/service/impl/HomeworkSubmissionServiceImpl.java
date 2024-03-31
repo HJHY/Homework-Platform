@@ -10,10 +10,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.constant.HomeworkConst;
 import org.hjhy.homeworkplatform.constant.MessageConstant;
 import org.hjhy.homeworkplatform.constant.RedisPrefixConst;
+import org.hjhy.homeworkplatform.constant.StatusCode;
 import org.hjhy.homeworkplatform.context.ObjectStorageContext;
 import org.hjhy.homeworkplatform.dto.EmailDto;
 import org.hjhy.homeworkplatform.dto.FileUploadCallbackBodyDto;
 import org.hjhy.homeworkplatform.dto.HomeworkStatusDto;
+import org.hjhy.homeworkplatform.enums.IdempotentInterfaceEnum;
+import org.hjhy.homeworkplatform.exception.BaseException;
 import org.hjhy.homeworkplatform.generator.domain.Clazz;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkSubmission;
@@ -25,6 +28,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
@@ -52,11 +56,12 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
     private final UserClassRoleService userClassRoleService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedissonClient redissonClient;
+    private final RedisService redisService;
 
     //创建一个线程池
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
-    public HomeworkSubmissionServiceImpl(UserService userService, ClazzService clazzService, @Lazy HomeworkReleaseService homeworkReleaseService, ObjectStorageContext objectStorageContext, MessageService messageService, UserClassRoleService userClassRoleService, RedisTemplate<String, Object> redisTemplate, RedissonClient redissonClient) {
+    public HomeworkSubmissionServiceImpl(UserService userService, ClazzService clazzService, @Lazy HomeworkReleaseService homeworkReleaseService, ObjectStorageContext objectStorageContext, MessageService messageService, UserClassRoleService userClassRoleService, RedisTemplate<String, Object> redisTemplate, RedissonClient redissonClient, RedisService redisService) {
         this.userService = userService;
         this.clazzService = clazzService;
         this.homeworkReleaseService = homeworkReleaseService;
@@ -65,11 +70,31 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
         this.userClassRoleService = userClassRoleService;
         this.redisTemplate = redisTemplate;
         this.redissonClient = redissonClient;
+        this.redisService = redisService;
     }
 
     @Override
     @Transactional
-    public FileUploadVo submit(Integer userId, Integer homeworkId, String description, String fileSuffix) throws Exception {
+    public FileUploadVo submit(Integer userId, Integer homeworkId, String description, String fileSuffix, String idempotentToken) throws Exception {
+        String key = getIdempotentTokenKey(homeworkId, userId);
+        String token;
+        /*进行token形式的接口幂等性检查*/
+        if (ObjectUtils.isEmpty(idempotentToken)) {
+            //没有携带令牌则需要生成令牌
+            token = redisService.getAndSetIdempotentToken(key);
+            return FileUploadVo.builder().idempotentToken(token).build();
+        } else {
+            //携带token则需要进行幂等性检查(借助lua脚本实现查找和删除)
+            String script = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
+            DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>(script, Long.class);
+            Long res = redisTemplate.execute(redisScript, List.of(key), idempotentToken);
+            if (ObjectUtils.isEmpty(res) || res == 0L) {
+                log.warn("幂等性检查失败,携带的令牌:{}", idempotentToken);
+                throw new BaseException(StatusCode.IDEMPOTENT_TOKEN_CHECK_FAILED);
+            }
+        }
+
+        //令牌通过验证,开始执行业务
         var user = userService.getById(userId);
         var clazz = clazzService.getById(1);
         var homeworkRelease = homeworkReleaseService.getById(1);
@@ -89,6 +114,10 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
         messageService.checkHomeworkStatus(new HomeworkStatusDto(homeworkSubmission.getHomeworkId(), filePath));
 
         return fileUploadVo;
+    }
+
+    private String getIdempotentTokenKey(Integer homeworkId, Integer userId) {
+        return RedisPrefixConst.IDEMPOTENT_TOKEN_PREFIX + IdempotentInterfaceEnum.HOMEWORK_SUBMIT.getInterfaceName() + ":" + "HomeworkId-" + homeworkId + ":" + "userId-" + userId;
     }
 
     @Override
@@ -140,10 +169,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
 
     @Override
     public List<HomeworkHistory> history(Integer userId, Integer homeworkId) {
-        List<HomeworkSubmission> list = this.list(new LambdaQueryWrapper<HomeworkSubmission>()
-                .eq(HomeworkSubmission::getBelongingId, homeworkId)
-                .eq(HomeworkSubmission::getUserId, userId)
-                .eq(HomeworkSubmission::getIsValid, 1));
+        List<HomeworkSubmission> list = this.list(new LambdaQueryWrapper<HomeworkSubmission>().eq(HomeworkSubmission::getBelongingId, homeworkId).eq(HomeworkSubmission::getUserId, userId).eq(HomeworkSubmission::getIsValid, 1));
         return list.stream().map(HomeworkHistory::new).toList();
     }
 
@@ -155,12 +181,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
         List<Integer> userIdList = userClassRoleService.getStudentIdInClazz(homeworkRelease.getClassId());
         userIdList.forEach(userId -> executor.submit(() -> {
             //检查用户的作业提交状态
-            boolean existsed = this.exists(
-                    new LambdaQueryWrapper<HomeworkSubmission>()
-                            .eq(HomeworkSubmission::getUserId, userId)
-                            .eq(HomeworkSubmission::getBelongingId, homeworkId)
-                            .eq(HomeworkSubmission::getStatus, 1)
-            );
+            boolean existsed = this.exists(new LambdaQueryWrapper<HomeworkSubmission>().eq(HomeworkSubmission::getUserId, userId).eq(HomeworkSubmission::getBelongingId, homeworkId).eq(HomeworkSubmission::getStatus, 1));
             //用户已经提交则不需要推送提醒信息
             if (existsed) {
                 return;
@@ -170,13 +191,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
             User user = userService.getById(userId);
             Clazz clazz = clazzService.getById(homeworkRelease.getClassId());
 
-            String notifyMessage = MessageConstant.HOMEWORK_REMINDER_MESSAGE.formatted(
-                    user.getRealname(),
-                    clazz.getClassName(),
-                    homeworkRelease.getHomeworkName(),
-                    homeworkRelease.getEndTime(),
-                    homeworkRelease.getDescription()
-            );
+            String notifyMessage = MessageConstant.HOMEWORK_REMINDER_MESSAGE.formatted(user.getRealname(), clazz.getClassName(), homeworkRelease.getHomeworkName(), homeworkRelease.getEndTime(), homeworkRelease.getDescription());
 
             //往消息队列中发送消息
             var emailDto = EmailDto.builder().toEmail(user.getEmail()).subject("作业提醒通知").content(notifyMessage).build();

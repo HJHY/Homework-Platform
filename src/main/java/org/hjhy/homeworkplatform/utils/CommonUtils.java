@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.UUID;
 
 /**
  * @author HJHY
@@ -76,5 +77,14 @@ public class CommonUtils {
      */
     public static long getDelayTime(LocalDateTime source, LocalDateTime dest) {
         return dest.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() - source.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    /**
+     * 生成幂等性token
+     *
+     * @return token
+     */
+    public static String generateIdempotentToken() {
+        return UUID.randomUUID().toString().replace("-", "");
     }
 }

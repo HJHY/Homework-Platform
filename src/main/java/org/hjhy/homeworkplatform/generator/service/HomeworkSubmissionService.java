@@ -17,7 +17,7 @@ import java.util.List;
  */
 public interface HomeworkSubmissionService extends IService<HomeworkSubmission> {
 
-    FileUploadVo submit(Integer userId, Integer homeworkId, String description, String fileSuffix) throws Exception;
+    FileUploadVo submit(Integer userId, Integer homeworkId, String description, String fileSuffix, String idempotentToken) throws Exception;
 
     void callback(FileUploadCallbackBodyDto.AliCloud callbackBody, HttpServletRequest request, HttpServletResponse response) throws Exception;
 

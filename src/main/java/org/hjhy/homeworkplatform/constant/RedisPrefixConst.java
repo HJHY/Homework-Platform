@@ -5,6 +5,10 @@ package org.hjhy.homeworkplatform.constant;
  * @date 2024/2/4 17:17
  */
 public class RedisPrefixConst {
+    /*接口幂等性前缀*/
+    public static final String IDEMPOTENT_TOKEN_PREFIX = "idempotent_token:";
+
+    /*************************************业务相关前缀*************************************/
     /*登录验证码存储的前缀*/
     public static final String REGISTER_CAPTCHA_PREFIX = "register_captcha_prefix:";
 
