@@ -32,7 +32,7 @@ public @interface RateLimiter {
     /**
      * 限流规则 （规则不可变，可多规则）
      */
-    RateRule[] rules() default {};
+    RateRule[] rules() default {@RateRule(count = 5, time = 10)};
 
     /**
      * 防重复提交值

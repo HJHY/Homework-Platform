@@ -8,6 +8,7 @@ import org.hjhy.homeworkplatform.annotation.RateRule;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.PasswordDto;
 import org.hjhy.homeworkplatform.dto.UserDto;
+import org.hjhy.homeworkplatform.enums.LimitTypeEnum;
 import org.hjhy.homeworkplatform.generator.domain.User;
 import org.hjhy.homeworkplatform.generator.service.UserService;
 import org.hjhy.homeworkplatform.vo.Result;
@@ -55,6 +56,7 @@ public class UserController {
     }
 
     @Operation(summary = "查询多个用户简单信息", description = "查询用户简单信息")
+    @RateLimiter(limitType = LimitTypeEnum.USER_ID)
     @GetMapping("/users/batch")
     public Result<List<SimpleUserVo>> simpleInfo(@RequestParam List<Integer> userIdList) {
         //查询多个用户的信息

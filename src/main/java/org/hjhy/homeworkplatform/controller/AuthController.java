@@ -6,10 +6,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import org.hjhy.homeworkplatform.annotation.RateLimiter;
+import org.hjhy.homeworkplatform.annotation.RateRule;
 import org.hjhy.homeworkplatform.constant.GlobalConst;
 import org.hjhy.homeworkplatform.dto.LoginDto;
 import org.hjhy.homeworkplatform.dto.RegisterDto;
 import org.hjhy.homeworkplatform.dto.SocialLoginBaseDto;
+import org.hjhy.homeworkplatform.enums.LimitTypeEnum;
 import org.hjhy.homeworkplatform.enums.LoginTypeEnum;
 import org.hjhy.homeworkplatform.generator.service.AuthService;
 import org.hjhy.homeworkplatform.vo.LoginVo;
@@ -27,6 +30,7 @@ public class AuthController {
     }
 
     @Operation(summary = "获取验证码", description = "用户向服务器获取登录验证码")
+    @RateLimiter(limitType = LimitTypeEnum.IP, rules = {@RateRule(count = 1, time = 5 * 60)})
     @GetMapping("/code")
     public Result<?> sendCaptcha(@Email(message = "邮件格式不合法", regexp = GlobalConst.EMAIL_REGEX)
                                  @NotBlank(message = "邮件格式不能为空")

@@ -5,10 +5,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.hjhy.homeworkplatform.annotation.HasRole;
+import org.hjhy.homeworkplatform.annotation.RateLimiter;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.ClassDto;
 import org.hjhy.homeworkplatform.dto.ClazzConditionDto;
+import org.hjhy.homeworkplatform.enums.LimitTypeEnum;
 import org.hjhy.homeworkplatform.generator.domain.Clazz;
 import org.hjhy.homeworkplatform.generator.domain.UserClassRole;
 import org.hjhy.homeworkplatform.generator.service.ClazzService;
@@ -76,6 +78,7 @@ public class ClazzController {
 
     //条件查询的权限检查由业务完成(因此没办法获取到classId,无法进行权限检查)
     @Operation(summary = "条件查询班级", description = "条件查询班级接口描述")
+    @RateLimiter(limitType = LimitTypeEnum.USER_ID)
     @GetMapping(value = "/classes/condition")
     public Result<PageResult<Clazz>> condition(ClazzConditionDto clazzConditionDto,
                                                @RequestParam(required = false) Integer current,
