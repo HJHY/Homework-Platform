@@ -52,6 +52,8 @@ public class HomeworkInterceptor implements HandlerInterceptor {
             log.warn("作业不存在或已被删除");
             throw new BaseException(StatusCode.HOMEWORK_NOT_EXISTED);
         }
+
+        RequestContext.setHomeworkId(homeworkId);
         RequestContext.setClassId(homeworkRelease.getClassId());
 
         return true;
@@ -60,5 +62,6 @@ public class HomeworkInterceptor implements HandlerInterceptor {
     @Override
     public void postHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler, ModelAndView modelAndView) {
         RequestContext.removeClassId();
+        RequestContext.removeHomeworkId();
     }
 }

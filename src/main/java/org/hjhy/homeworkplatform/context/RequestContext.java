@@ -9,6 +9,7 @@ import org.hjhy.homeworkplatform.dto.AuthInfoDto;
 public class RequestContext {
     private static final ThreadLocal<AuthInfoDto> UserInfoThreadLocal = new ThreadLocal<>();
     private static final ThreadLocal<Integer> classIdThreadLocal = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> homeworkIdThreadLocal = new ThreadLocal<>();
 
     public static AuthInfoDto getAuthInfo() {
         return UserInfoThreadLocal.get();
@@ -32,5 +33,17 @@ public class RequestContext {
 
     public static void removeClassId() {
         classIdThreadLocal.remove();
+    }
+
+    public static Integer getHomeworkId() {
+        return homeworkIdThreadLocal.get();
+    }
+
+    public static void setHomeworkId(Integer homeworkId) {
+        homeworkIdThreadLocal.set(homeworkId);
+    }
+
+    public static void removeHomeworkId() {
+        homeworkIdThreadLocal.remove();
     }
 }

@@ -76,16 +76,26 @@ public class RateLimiterAspect {
                 key.append(authInfo.getUserId());
                 key.append("}").append(":");
                 break;
-//            case LimitTypeEnum.ClASS_ID:
-//                Integer classId = RequestContext.getClassId();
-//                if (ObjectUtils.isEmpty(classId)) {
-//                    log.error("进行限流时获取班级信息失败,请检查接口是否需要提供班级信息");
-//                    throw new BaseException("限流功能失败");
-//                }
-//                key.append(LimitTypeEnum.ClASS_ID.getTypeName()).append("{");
-//                key.append(classId);
-//                key.append("}").append(":");
-//                break;
+            case LimitTypeEnum.ClASS_ID:
+                Integer classId = RequestContext.getClassId();
+                if (ObjectUtils.isEmpty(classId)) {
+                    log.error("进行限流时获取班级信息失败,请检查接口是否需要提供班级信息");
+                    throw new BaseException("限流功能失败");
+                }
+                key.append(LimitTypeEnum.ClASS_ID.getTypeName()).append("{");
+                key.append(classId);
+                key.append("}").append(":");
+                break;
+            case LimitTypeEnum.HOMEWORK_ID:
+                Integer homeworkId = RequestContext.getHomeworkId();
+                if (ObjectUtils.isEmpty(homeworkId)) {
+                    log.error("进行限流时获取作业信息失败,请检查接口是否需要提供作业信息");
+                    throw new BaseException("限流功能失败");
+                }
+                key.append(LimitTypeEnum.HOMEWORK_ID.getTypeName()).append("{");
+                key.append(homeworkId);
+                key.append("}").append(":");
+                break;
             case GLOBAL:
                 key.append(LimitTypeEnum.GLOBAL.getTypeName()).append(":");
                 break;

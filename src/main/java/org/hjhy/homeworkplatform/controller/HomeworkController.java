@@ -15,6 +15,7 @@ import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.FileUploadCallbackBodyDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseConditionDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseDto;
+import org.hjhy.homeworkplatform.enums.LimitTypeEnum;
 import org.hjhy.homeworkplatform.exception.BaseException;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkSubmission;
@@ -161,7 +162,7 @@ public class HomeworkController {
 
     //通过限流来做幂等性处理,30分钟允许通知一次
     @Operation(summary = "通知班级成员提交作业", description = "通知班级成员提交作业接口描述")
-    @RateLimiter(preventDuplicate = true, preventDuplicateRule = @RateRule(count = 1, time = 30 * 60))
+    @RateLimiter(limitType = LimitTypeEnum.HOMEWORK_ID, preventDuplicate = true, preventDuplicateRule = @RateRule(count = 1, time = 30 * 60))
     @HasRole(roles = {RoleConstant.CLASS_CREATOR, RoleConstant.CLASS_ADMIN})
     @GetMapping("/homeworks/{homeworkId}/notify")
     public Result<?> notifyHomework(@PathVariable Integer homeworkId) {
