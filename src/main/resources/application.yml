@@ -28,6 +28,12 @@ spring:
     username: xxxxxx
     password: xxxxxx
     virtual-host: xxxxxx
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        #手动ack
+        acknowledge-mode: manual
   data:
     redis:
       port: 6379

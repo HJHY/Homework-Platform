@@ -1,15 +1,20 @@
 package org.hjhy.homeworkplatform.consumer;
 
+import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.config.RabbitMQConfig;
 import org.hjhy.homeworkplatform.dto.EmailDto;
 import org.hjhy.homeworkplatform.utils.EmailUtils;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitHandler;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.boot.autoconfigure.mail.MailProperties;
+import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
+
+import java.io.IOException;
 
 /**
  * @author HJHY
@@ -24,18 +29,33 @@ public class EmailConsumer {
 
     public EmailConsumer(JavaMailSender javaMailSender, MailProperties mailProperties) {
         this.javaMailSender = javaMailSender;
-
         this.mailProperties = mailProperties;
     }
 
     @RabbitHandler
-    public void process(EmailDto emailDto) {
+    public void process(Message message, EmailDto emailDto, Channel channel) throws IOException {
         log.info("邮件发送消费者收到消息:" + emailDto);
+        log.info("message:{}:", message.getMessageProperties());
 
-        var mailMessage = new SimpleMailMessage();
-        EmailUtils.sealMailMessage(mailMessage, emailDto);
-        mailMessage.setFrom(mailProperties.getUsername());
-        javaMailSender.send(mailMessage);
+        try {
+            //todo 先处理业务再进行确认,可以避免消息丢失但是可能出现重复消息
+            var mailMessage = new SimpleMailMessage();
+            EmailUtils.sealMailMessage(mailMessage, emailDto);
+            mailMessage.setFrom(mailProperties.getUsername());
+            javaMailSender.send(mailMessage);
+
+            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+        } catch (MailException e) {
+            //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志
+            log.warn("邮件{{}}发送失败", emailDto, e);
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
+            return;
+        } catch (IOException e) {
+            //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志
+            log.error("消息{{}}ack失败,消息不重新入队", message.getMessageProperties());
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
+            return;
+        }
 
         log.info("邮件{}发送成功", emailDto);
     }

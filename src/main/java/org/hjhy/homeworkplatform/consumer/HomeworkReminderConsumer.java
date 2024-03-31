@@ -2,6 +2,7 @@ package org.hjhy.homeworkplatform.consumer;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.config.RabbitMQConfig;
 import org.hjhy.homeworkplatform.constant.MessageConstant;
@@ -10,10 +11,13 @@ import org.hjhy.homeworkplatform.dto.EmailDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReminderDto;
 import org.hjhy.homeworkplatform.generator.domain.*;
 import org.hjhy.homeworkplatform.generator.service.*;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitHandler;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
+
+import java.io.IOException;
 
 /**
  * @author HJHY
@@ -40,7 +44,7 @@ public class HomeworkReminderConsumer {
     }
 
     @RabbitHandler
-    public void process(HomeworkReminderDto homeworkReminderDto) {
+    public void process(HomeworkReminderDto homeworkReminderDto, Message message, Channel channel) throws IOException {
         log.info("作业截止提醒消费者收到消息:" + homeworkReminderDto);
 
         HomeworkRelease homeworkRelease = homeworkReleaseService.getById(homeworkReminderDto.getHomeworkId());
@@ -77,6 +81,15 @@ public class HomeworkReminderConsumer {
             homeworkReminderMessageService.update(new LambdaUpdateWrapper<HomeworkReminderMessage>()
                     .set(HomeworkReminderMessage::getStatus, 1)
                     .eq(HomeworkReminderMessage::getId, homeworkReminderDto.getMessageId()));
+        }
+
+        try {
+            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+        } catch (IOException e) {
+            //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志
+            log.error("消息{{}}ack失败,消息不重新入队", message.getMessageProperties());
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
+            return;
         }
 
         log.info("作业提醒任务{}完成", homeworkReminderDto);

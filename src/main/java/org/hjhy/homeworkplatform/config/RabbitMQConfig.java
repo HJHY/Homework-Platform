@@ -1,5 +1,6 @@
 package org.hjhy.homeworkplatform.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.constant.HomeworkConst;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -18,6 +19,7 @@ import java.util.Map;
  * @date 2022/3/26 - 16:17
  */
 @Configuration
+@Slf4j
 public class RabbitMQConfig {
     /**
      * 普通直连交换机的名称
@@ -83,6 +85,28 @@ public class RabbitMQConfig {
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
         RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
         rabbitTemplate.setMessageConverter(messageConverter());
+
+        //设置confirmCallback,消息从生产者投递到交换机过程中失败
+        rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
+            if (!ack) {
+                log.error("ConfirmCallback,消息从生产者投递到交换机过程中失败:correlationData({}),ack({}),cause({})", correlationData, false, cause);
+            }
+            log.info("ConfirmCallback,消息从生产者投递到交换机:correlationData({}),ack({}),cause({})", correlationData, ack, cause);
+        });
+
+        //设置returnCallback,消息从交换到投递到队列过程失败
+        rabbitTemplate.setReturnsCallback(returnedMessage -> {
+            String errMessage = "ReturnCallback,消息从交换到投递到队列过程失败:exchange({}),route({}),replyCode({}),replyText({}),message({})";
+            log.error(errMessage,
+                    returnedMessage.getExchange(),
+                    returnedMessage.getRoutingKey(),
+                    returnedMessage.getReplyCode(),
+                    returnedMessage.getReplyText(),
+                    returnedMessage.getMessage().getMessageProperties());
+        });
+        //如果不手动开启,则无法触发returnCallback
+        rabbitTemplate.setMandatory(true);
+
         return rabbitTemplate;
     }
 
