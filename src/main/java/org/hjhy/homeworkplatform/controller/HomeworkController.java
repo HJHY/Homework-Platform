@@ -8,6 +8,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.hjhy.homeworkplatform.annotation.HasRole;
+import org.hjhy.homeworkplatform.annotation.RateLimiter;
+import org.hjhy.homeworkplatform.annotation.RateRule;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.FileUploadCallbackBodyDto;
@@ -157,8 +159,9 @@ public class HomeworkController {
         return Result.ok(history);
     }
 
-    //todo 可以通过限流来做幂等性处理
+    //通过限流来做幂等性处理,30分钟允许通知一次
     @Operation(summary = "通知班级成员提交作业", description = "通知班级成员提交作业接口描述")
+    @RateLimiter(preventDuplicate = true, preventDuplicateRule = @RateRule(count = 1, time = 30 * 60))
     @HasRole(roles = {RoleConstant.CLASS_CREATOR, RoleConstant.CLASS_ADMIN})
     @GetMapping("/homeworks/{homeworkId}/notify")
     public Result<?> notifyHomework(@PathVariable Integer homeworkId) {

@@ -3,6 +3,8 @@ package org.hjhy.homeworkplatform.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.hjhy.homeworkplatform.annotation.RateLimiter;
+import org.hjhy.homeworkplatform.annotation.RateRule;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.PasswordDto;
 import org.hjhy.homeworkplatform.dto.UserDto;
@@ -30,6 +32,7 @@ public class UserController {
     }
 
     @Operation(summary = "查询用户详细信息", description = "查询用户详细信息")
+    @RateLimiter(rules = {@RateRule(count = 6, time = 20), @RateRule(count = 20, time = 100)}, preventDuplicate = true)
     @GetMapping("/users")
     public Result<UserVo> info() {
         return Result.ok(userService.queryUserInfo(RequestContext.getAuthInfo().getUserId()));

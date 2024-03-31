@@ -8,6 +8,7 @@ import org.aspectj.lang.reflect.MethodSignature;
 import org.hjhy.homeworkplatform.annotation.HasRole;
 import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.generator.service.UserClassRoleService;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -22,6 +23,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Aspect
 @Component
 @Slf4j
+@Order(1)
 public class ClassAspect {
     private final UserClassRoleService userClassRoleService;
 
@@ -34,6 +36,7 @@ public class ClassAspect {
      */
     @Before("@annotation(org.hjhy.homeworkplatform.annotation.HasRole)")
     public void before(JoinPoint joinPoint) {
+        log.info("进行班级接口的权限检查");
         var requestAttributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (requestAttributes == null) {
             throw new RuntimeException("权限检查的切面获取request产生空指针");
@@ -59,5 +62,7 @@ public class ClassAspect {
 
         //检查用户是否有权限访问班级
         userClassRoleService.checkUserClassPrivilege(userId, classId, annotation.roles(), request);
+
+        log.info("用户权限检查通过");
     }
 }

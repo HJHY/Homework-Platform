@@ -74,7 +74,6 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
             log.error("用户{{}}没有访问{{}}的权限", userId, request.getRequestURI());
             throw new BaseException(StatusCode.NO_PRIVILEGE);
         }
-        log.info("用户{{}}拥有访问{{}}的权限,权限检查通过", userId, request.getRequestURI());
     }
 }
 
