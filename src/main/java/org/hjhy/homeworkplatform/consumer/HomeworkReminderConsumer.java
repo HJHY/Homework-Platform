@@ -1,6 +1,5 @@
 package org.hjhy.homeworkplatform.consumer;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
@@ -9,7 +8,10 @@ import org.hjhy.homeworkplatform.constant.MessageConstant;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.dto.EmailDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReminderDto;
-import org.hjhy.homeworkplatform.generator.domain.*;
+import org.hjhy.homeworkplatform.generator.domain.Clazz;
+import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
+import org.hjhy.homeworkplatform.generator.domain.HomeworkReminderMessage;
+import org.hjhy.homeworkplatform.generator.domain.User;
 import org.hjhy.homeworkplatform.generator.service.*;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitHandler;
@@ -62,22 +64,14 @@ public class HomeworkReminderConsumer {
             }
             User user = userService.getById(homeworkReminderDto.getUserId());
             //进行作业信息推送的时候判断用户是否还在班级中
-            if (userClassRoleService.exists(new LambdaQueryWrapper<UserClassRole>()
-                    .eq(UserClassRole::getUserId, user.getId())
-                    .eq(UserClassRole::getClassId, homeworkRelease.getClassId())
-                    .eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER))) {
+            if (userClassRoleService.getCachableUserClassRoleList(user.getId(), homeworkRelease.getClassId()).stream().noneMatch(userClassRole -> userClassRole.getRoleId().equals(RoleConstant.CLASS_MEMBER.getRoleId()))) {
                 log.info("用户不在班级中,不推送作业截止提醒");
                 return;
             }
 
             Clazz clazz = clazzService.getById(homeworkRelease.getClassId());
 
-            String content = MessageConstant.DDL_MESSAGE.formatted(
-                    user.getRealname(),
-                    clazz.getClassName(),
-                    homeworkRelease.getHomeworkName(),
-                    homeworkRelease.getEndTime(),
-                    homeworkRelease.getDescription());
+            String content = MessageConstant.DDL_MESSAGE.formatted(user.getRealname(), clazz.getClassName(), homeworkRelease.getHomeworkName(), homeworkRelease.getEndTime(), homeworkRelease.getDescription());
             EmailDto emailDto = EmailDto.builder().toEmail(user.getEmail()).subject("作业截止提醒").content(content).build();
 
             //推送延时消息
@@ -86,9 +80,7 @@ public class HomeworkReminderConsumer {
             //这个数据是从数据库中扫描出来的,而不是是作业发布时用户设置的DDL计算后在当天出现的
             if (!ObjectUtils.isEmpty(homeworkReminderDto.getMessageId())) {
                 //更新状态
-                homeworkReminderMessageService.update(new LambdaUpdateWrapper<HomeworkReminderMessage>()
-                        .set(HomeworkReminderMessage::getStatus, 1)
-                        .eq(HomeworkReminderMessage::getId, homeworkReminderDto.getMessageId()));
+                homeworkReminderMessageService.update(new LambdaUpdateWrapper<HomeworkReminderMessage>().set(HomeworkReminderMessage::getStatus, 1).eq(HomeworkReminderMessage::getId, homeworkReminderDto.getMessageId()));
             }
 
             log.info("作业提醒任务{}完成", homeworkReminderDto);

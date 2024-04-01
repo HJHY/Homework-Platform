@@ -20,6 +20,7 @@ import org.hjhy.homeworkplatform.vo.ClassInfoVo;
 import org.hjhy.homeworkplatform.vo.PageResult;
 import org.hjhy.homeworkplatform.vo.UserVo;
 import org.redisson.api.RLock;
+import org.redisson.api.RReadWriteLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -126,9 +127,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         LambdaUpdateWrapper<HomeworkRelease> homeworkUpdateQuery = new LambdaUpdateWrapper<HomeworkRelease>().set(HomeworkRelease::getIsValid, 0).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1);
         homeworkReleaseService.update(homeworkUpdateQuery);
 
-        //不存在未结束的作业,删除班级内权限记录
-        LambdaUpdateWrapper<UserClassRole> userClassRoleUpdateQuery = new LambdaUpdateWrapper<UserClassRole>().set(UserClassRole::getIsValid, 0).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1);
-        userClassRoleService.update(userClassRoleUpdateQuery);
+        //不存在未结束的作业,删除班级内的所有用户角色并做好缓存同步
+        userClassRoleService.deleteUserClassRole(null, classId);
 
         this.updateById(clazz);
     }
@@ -157,8 +157,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         var userVoList = userService.listByIds(userIdList).stream().map(UserVo::new).toList();
         //查询班级作业
         List<HomeworkRelease> homeworkList = homeworkReleaseService.list(new LambdaQueryWrapper<HomeworkRelease>().select(HomeworkRelease::getHomeworkId, HomeworkRelease::getHomeworkName, HomeworkRelease::getEndTime).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1));
-        //查询用户在班级中的角色
-        var roleIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getRoleId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1)).stream().map(UserClassRole::getRoleId).toList();
+        //查询班级中的角色 todo 这个实现不合理
+        var roleIdList = userClassRoleService.getCachableUserClassRoleList(null, classId).stream().map(UserClassRole::getRoleId).toList();
         List<Role> roleList = roleService.listByIds(roleIdList);
 
         return new ClassInfoVo(clazz, userVoList, homeworkList, roleList);
@@ -173,10 +173,13 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     @Override
     public void joinClass(Integer userId, String shareCode) {
         var classId = getClassIdByShareCode(shareCode);
+        if (ObjectUtils.isEmpty(classId)) {
+            throw new BaseException(StatusCode.INVALID_CLASS_SHARE_CODE);
+        }
 
         //检查是否已经加入班级
-        var existsed = userClassRoleService.exists(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getUserId, userId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1));
-        if (existsed) {
+        List<UserClassRole> userClassRoleList = userClassRoleService.getCachableUserClassRoleList(userId, classId);
+        if (!ObjectUtils.isEmpty(userClassRoleList)) {
             throw new BaseException(StatusCode.ALREADY_JOIN_CLASS);
         }
 
@@ -199,16 +202,15 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             throw new BaseException("班级创建者无法退出班级");
         }
 
-        var userClassRoleList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getUserId, userId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getIsValid, 1));
+        var userClassRoleList = userClassRoleService.getCachableUserClassRoleList(userId, classId);
 
         //已经退出班级
         if (ObjectUtils.isEmpty(userClassRoleList)) {
             throw new BaseException(StatusCode.ALREADY_EXIT_CLASS);
         }
 
-        //退出班级
-        userClassRoleList.forEach(userClassRole -> userClassRole.setIsValid(0));
-        userClassRoleService.updateBatchById(userClassRoleList);
+        //退出班级,删除用户角色同时同步缓存
+        userClassRoleService.deleteUserClassRole(userId, classId);
     }
 
     private String generateAndSetShareCode(Integer classId) {
@@ -255,11 +257,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
      * @return classId
      */
     private Integer getClassIdByShareCode(String shareCode) throws BaseException {
-        var classId = (Integer) redisTemplate.opsForValue().get(RedisPrefixConst.SHARED_CODE_TO_CLASS_ID_PREFIX + shareCode);
-        if (classId == null) {
-            throw new BaseException(StatusCode.INVALID_CLASS_SHARE_CODE);
-        }
-        return classId;
+        return (Integer) redisTemplate.opsForValue().get(RedisPrefixConst.SHARED_CODE_TO_CLASS_ID_PREFIX + shareCode);
     }
 
     /**
@@ -289,7 +287,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             throw new BaseException("不能将自己设置为班级管理员");
         }
 
-        //判断将要设置为管理员的用户是否都已经在班级内
+        //判断将要设置为管理员的用户是否都已经在班级内 todo 这里的select是不是不对?
         List<UserClassRole> userClassRoles = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getId, UserClassRole::getUserId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER.getRoleId()));
         for (Integer userId : userIdList) {
             if (userClassRoles.stream().noneMatch(userClassRole -> userClassRole.getUserId().equals(userId))) {
@@ -298,12 +296,27 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             }
         }
 
-        //删除班级中的管理员再添加
-        userClassRoleService.remove(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()));
+        /*删除班级中的管理员再添加*/
+        RReadWriteLock readWriteLock = redissonClient.getReadWriteLock(RedisPrefixConst.USER_CLASS_ROLE_LOCK_PREFIX + classId);
+        RLock wLock = readWriteLock.writeLock();
+        try {
+            wLock.lock();
+            //删除缓存
+            userClassRoleService.invalidateUserClassRoleCache(null, classId);
+            //删除管理员
+            LambdaUpdateWrapper<UserClassRole> updateWrapper = new LambdaUpdateWrapper<UserClassRole>()
+                    .set(UserClassRole::getIsValid, 0)
+                    .eq(UserClassRole::getClassId, classId)
+                    .eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId())
+                    .eq(UserClassRole::getIsValid, 1);
+            userClassRoleService.update(updateWrapper);
 
-        //添加
-        var userClassRoleList = userIdList.stream().map(userId -> UserClassRole.builder().userId(userId).classId(classId).roleId(RoleConstant.CLASS_ADMIN.getRoleId()).build()).toList();
-        userClassRoleService.saveBatch(userClassRoleList);
+            //添加班级内用户角色信息
+            var userClassRoleList = userIdList.stream().map(userId -> UserClassRole.builder().userId(userId).classId(classId).roleId(RoleConstant.CLASS_ADMIN.getRoleId()).build()).toList();
+            userClassRoleService.saveBatch(userClassRoleList);
+        } finally {
+            wLock.unlock();
+        }
     }
 
     @Override

@@ -29,4 +29,29 @@ public interface UserClassRoleService extends IService<UserClassRole> {
      * @param classId classId
      */
     void checkUserClassPrivilege(Integer userId, Integer classId, RoleConstant[] roles, HttpServletRequest request);
+
+    /**
+     * 获取用户在班级中的角色列表(先取缓存再取数据库)
+     * 用户信息为空时,获取班级内所有用户的角色列表
+     * 不允许classId为空
+     *
+     * @param userId  userId
+     * @param classId classId
+     * @return list
+     */
+    List<UserClassRole> getCachableUserClassRoleList(Integer userId, Integer classId);
+
+    /**
+     * 删除用户在班级中的角色
+     * @param userId userId
+     * @param classId classId
+     */
+    void deleteUserClassRole(Integer userId, Integer classId);
+
+    /**
+     * 删除用户在班级中的角色缓存
+     * @param userId userId
+     * @param classId classId
+     */
+    void invalidateUserClassRoleCache(Integer userId, Integer classId);
 }

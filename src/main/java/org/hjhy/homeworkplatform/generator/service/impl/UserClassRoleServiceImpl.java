@@ -1,9 +1,11 @@
 package org.hjhy.homeworkplatform.generator.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.hjhy.homeworkplatform.constant.RedisPrefixConst;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.constant.StatusCode;
 import org.hjhy.homeworkplatform.exception.BaseException;
@@ -12,8 +14,13 @@ import org.hjhy.homeworkplatform.generator.domain.UserClassRole;
 import org.hjhy.homeworkplatform.generator.mapper.UserClassRoleMapper;
 import org.hjhy.homeworkplatform.generator.service.ClazzService;
 import org.hjhy.homeworkplatform.generator.service.UserClassRoleService;
+import org.redisson.api.RLock;
+import org.redisson.api.RReadWriteLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 
 import java.util.Arrays;
@@ -29,9 +36,13 @@ import java.util.List;
 public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, UserClassRole>
         implements UserClassRoleService {
     private final ClazzService clazzService;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedissonClient redissonClient;
 
-    public UserClassRoleServiceImpl(@Lazy ClazzService clazzService) {
+    public UserClassRoleServiceImpl(@Lazy ClazzService clazzService, RedisTemplate<String, Object> redisTemplate, RedissonClient redissonClient) {
         this.clazzService = clazzService;
+        this.redisTemplate = redisTemplate;
+        this.redissonClient = redissonClient;
     }
 
     @Override
@@ -54,11 +65,7 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
         }
 
         //检查用户在班级中的角色(一个用户可能存在多个角色)
-        var userClassRoleList = this.list(new LambdaQueryWrapper<UserClassRole>()
-                        .select(UserClassRole::getRoleId)
-                        .eq(UserClassRole::getUserId, userId)
-                        .eq(UserClassRole::getClassId, classId))
-                .stream().map(UserClassRole::getRoleId).toList();
+        var userClassRoleList = getCachableUserClassRoleList(userId, classId).stream().map(UserClassRole::getRoleId).toList();
         if (ObjectUtils.isEmpty(userClassRoleList)) {
             log.error("当前用户{{}}没有加入id为{{}}的班级", userId, classId);
             throw new BaseException(StatusCode.NOT_JOIN_CLASS);
@@ -74,6 +81,99 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
             log.error("用户{{}}没有访问{{}}的权限", userId, request.getRequestURI());
             throw new BaseException(StatusCode.NO_PRIVILEGE);
         }
+    }
+
+    @Override
+    public List<UserClassRole> getCachableUserClassRoleList(Integer userId, Integer classId) {
+        //不允许userId和classId同时为空
+        if (ObjectUtils.isEmpty(classId) || ObjectUtils.isEmpty(userId)) {
+            log.warn("classId和userId不能为空");
+            throw new BaseException(StatusCode.FAIL);
+        }
+
+        List<UserClassRole> userClassRoleList = getUserClassRoleListFromCache(userId, classId);
+        //这里采用双检锁的方式获取数据除了保证一致性,也可以解决大量请求同时不命中直接请求数据库的问题
+        if (ObjectUtils.isEmpty(userClassRoleList)) {
+            //获取读锁(这里的读锁允许多个用户同时读取)
+            RReadWriteLock readWriteLock = redissonClient.getReadWriteLock(RedisPrefixConst.USER_CLASS_ROLE_LOCK_PREFIX + classId);
+            RLock rLock = readWriteLock.readLock();
+            //双重检查
+            try {
+                rLock.lock();
+
+                userClassRoleList = getUserClassRoleListFromCache(userId, classId);
+                if (ObjectUtils.isEmpty(userClassRoleList)) {
+                    userClassRoleList = getUserClassRoleListFromDB(userId, classId);
+                    if (ObjectUtils.isEmpty(userClassRoleList)) {
+                        return null;
+                    }
+                    setUserClassRoleListToCache(userId, classId, userClassRoleList);
+                }
+            } finally {
+                rLock.unlock();
+            }
+        }
+        return userClassRoleList;
+    }
+
+    @Override
+    @Transactional
+    public void deleteUserClassRole(Integer userId, Integer classId) {
+        //获取写锁
+        RReadWriteLock readWriteLock = redissonClient.getReadWriteLock(RedisPrefixConst.USER_CLASS_ROLE_LOCK_PREFIX + classId);
+        RLock wLock = readWriteLock.writeLock();
+
+        try {
+            wLock.lock();
+
+            //userId为null则直接删除班级内的所有角色
+            if (ObjectUtils.isEmpty(userId)) {
+                //删除整个班级的角色缓存
+                invalidateUserClassRoleCache(null, classId);
+                //删除角色
+                this.update(new LambdaUpdateWrapper<UserClassRole>()
+                        .set(UserClassRole::getIsValid, 0)
+                        .eq(UserClassRole::getClassId, classId));
+            } else {
+                /*userId和ClassId都不为null则删除班级内用户的角色*/
+                //删除缓存
+                invalidateUserClassRoleCache(userId, classId);
+                //更新数据库,先删除用户在班级中的所有角色
+                this.update(new LambdaUpdateWrapper<UserClassRole>()
+                        .set(UserClassRole::getIsValid, 0)
+                        .eq(UserClassRole::getUserId, userId)
+                        .eq(UserClassRole::getClassId, classId));
+            }
+        } finally {
+            wLock.unlock();
+        }
+    }
+
+    @Override
+    public void invalidateUserClassRoleCache(Integer userId, Integer classId) {
+        if (ObjectUtils.isEmpty(userId)) {
+            //userId不存在则删除整个班级的用户角色信息
+            redisTemplate.delete(RedisPrefixConst.USER_CLASS_ROLE_PREFIX + classId);
+        } else {
+            //删除班级内特定用户的角色缓存信息
+            redisTemplate.opsForHash().delete(RedisPrefixConst.USER_CLASS_ROLE_PREFIX + classId, userId);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<UserClassRole> getUserClassRoleListFromCache(Integer userId, Integer classId) {
+        return (List<UserClassRole>) redisTemplate.opsForHash().get(RedisPrefixConst.USER_CLASS_ROLE_PREFIX + classId, String.valueOf(userId));
+    }
+
+    private void setUserClassRoleListToCache(Integer userId, Integer classId, List<UserClassRole> userClassRoleList) {
+        redisTemplate.opsForHash().put(RedisPrefixConst.USER_CLASS_ROLE_PREFIX + classId, String.valueOf(userId), userClassRoleList);
+    }
+
+    private List<UserClassRole> getUserClassRoleListFromDB(Integer userId, Integer classId) {
+        return this.list(new LambdaQueryWrapper<UserClassRole>()
+                .eq(userId != null, UserClassRole::getUserId, userId)
+                .eq(classId != null, UserClassRole::getClassId, classId)
+                .eq(UserClassRole::getIsValid, 1));
     }
 }
 
