@@ -17,6 +17,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ObjectUtils;
 
 import java.io.IOException;
 
@@ -44,8 +45,16 @@ public class EmailConsumer {
         log.info("邮件发送消费者收到消息:" + emailDto);
         log.info("message:{}:", message.getMessageProperties());
 
+        //判断消息序号的存在性,如果不存在则直接抛弃
+        String correlationId = message.getMessageProperties().getCorrelationId();
+        if (ObjectUtils.isEmpty(correlationId)) {
+            log.error("消息{{}}没有correlationId", message.getMessageProperties());
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
+            return;
+        }
+
         try {
-            ConsumedMessage consumedMessage = ConsumedMessage.builder().messageId(message.getMessageProperties().getCorrelationId()).build();
+            ConsumedMessage consumedMessage = ConsumedMessage.builder().messageId(correlationId).build();
             log.info("保存消息{{}}", consumedMessage);
             consumedMessagesService.save(consumedMessage);
 
@@ -54,24 +63,22 @@ public class EmailConsumer {
             EmailUtils.sealMailMessage(mailMessage, emailDto);
             mailMessage.setFrom(mailProperties.getUsername());
             javaMailSender.send(mailMessage);
-
-            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
-        } catch (DuplicateKeyException e) {
-            log.info("消息{{}}已经消费过", message.getMessageProperties());
+            log.info("邮件{}发送成功", emailDto);
+            //确认消息
             channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
             return;
+        } catch (DuplicateKeyException e) {
+            log.info("消息{{}}已经消费过", message.getMessageProperties());
         } catch (MailException e) {
             //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志
             log.warn("邮件{{}}发送失败", emailDto, e);
-            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
-            return;
         } catch (IOException e) {
             //这里ack失败直接记录日志不重新入队,避免消息重复失败打满日志
             log.error("消息{{}}ack失败,消息不重新入队", message.getMessageProperties());
-            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
-            return;
+        } catch (Exception e) {
+            log.error("消息{{}}处理失败", message.getMessageProperties(), e);
         }
-
-        log.info("邮件{}发送成功", emailDto);
+        //统一处理失败的情况(记录日志后直接丢弃消息)
+        channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
     }
 }
