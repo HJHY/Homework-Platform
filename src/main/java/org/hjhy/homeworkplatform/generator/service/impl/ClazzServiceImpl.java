@@ -12,9 +12,15 @@ import org.hjhy.homeworkplatform.context.RequestContext;
 import org.hjhy.homeworkplatform.dto.ClassDto;
 import org.hjhy.homeworkplatform.dto.ClazzConditionDto;
 import org.hjhy.homeworkplatform.exception.BaseException;
-import org.hjhy.homeworkplatform.generator.domain.*;
+import org.hjhy.homeworkplatform.generator.domain.Clazz;
+import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
+import org.hjhy.homeworkplatform.generator.domain.User;
+import org.hjhy.homeworkplatform.generator.domain.UserClassRole;
 import org.hjhy.homeworkplatform.generator.mapper.ClazzMapper;
-import org.hjhy.homeworkplatform.generator.service.*;
+import org.hjhy.homeworkplatform.generator.service.ClazzService;
+import org.hjhy.homeworkplatform.generator.service.HomeworkReleaseService;
+import org.hjhy.homeworkplatform.generator.service.UserClassRoleService;
+import org.hjhy.homeworkplatform.generator.service.UserService;
 import org.hjhy.homeworkplatform.utils.CommonUtils;
 import org.hjhy.homeworkplatform.vo.ClassInfoVo;
 import org.hjhy.homeworkplatform.vo.PageResult;
@@ -55,7 +61,6 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     private final UserClassRoleService userClassRoleService;
     private final UserService userService;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final RoleService roleService;
     private final HomeworkReleaseService homeworkReleaseService;
     private final RedissonClient redissonClient;
 
@@ -64,12 +69,10 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     //创建一个线程池
     private final ThreadPoolExecutor executorForClazz = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
-
-    public ClazzServiceImpl(UserClassRoleService userClassRoleService, UserService userService, RedisTemplate<String, Object> redisTemplate, RoleService roleService, HomeworkReleaseService homeworkReleaseService, RedissonClient redissonClient) {
+    public ClazzServiceImpl(UserClassRoleService userClassRoleService, UserService userService, RedisTemplate<String, Object> redisTemplate, HomeworkReleaseService homeworkReleaseService, RedissonClient redissonClient) {
         this.userClassRoleService = userClassRoleService;
         this.userService = userService;
         this.redisTemplate = redisTemplate;
-        this.roleService = roleService;
         this.homeworkReleaseService = homeworkReleaseService;
         this.redissonClient = redissonClient;
     }
@@ -157,11 +160,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         var userVoList = userService.listByIds(userIdList).stream().map(UserVo::new).toList();
         //查询班级作业
         List<HomeworkRelease> homeworkList = homeworkReleaseService.list(new LambdaQueryWrapper<HomeworkRelease>().select(HomeworkRelease::getHomeworkId, HomeworkRelease::getHomeworkName, HomeworkRelease::getEndTime).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1));
-        //查询班级中的角色 todo 这个实现不合理
-        var roleIdList = userClassRoleService.getCachableUserClassRoleList(null, classId).stream().map(UserClassRole::getRoleId).toList();
-        List<Role> roleList = roleService.listByIds(roleIdList);
 
-        return new ClassInfoVo(clazz, userVoList, homeworkList, roleList);
+        return new ClassInfoVo(clazz, userVoList, homeworkList);
     }
 
     @Override
@@ -287,7 +287,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             throw new BaseException("不能将自己设置为班级管理员");
         }
 
-        //判断将要设置为管理员的用户是否都已经在班级内 todo 这里的select是不是不对?
+        //判断将要设置为管理员的用户是否都已经在班级内
         List<UserClassRole> userClassRoles = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getId, UserClassRole::getUserId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_MEMBER.getRoleId()));
         for (Integer userId : userIdList) {
             if (userClassRoles.stream().noneMatch(userClassRole -> userClassRole.getUserId().equals(userId))) {

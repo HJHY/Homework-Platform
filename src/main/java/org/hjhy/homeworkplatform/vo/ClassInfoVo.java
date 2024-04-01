@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.*;
 import org.hjhy.homeworkplatform.generator.domain.Clazz;
 import org.hjhy.homeworkplatform.generator.domain.HomeworkRelease;
-import org.hjhy.homeworkplatform.generator.domain.Role;
 
 import java.util.Date;
 import java.util.List;
@@ -61,11 +60,6 @@ public class ClassInfoVo {
      */
     private List<HomeworkRelease> homeworkList;
 
-    /**
-     * 权限列表
-     */
-    private List<Role> roleList;
-
     public ClassInfoVo(Clazz clazz) {
         this.classId = clazz.getClassId();
         this.className = clazz.getClassName();
@@ -75,7 +69,7 @@ public class ClassInfoVo {
         this.lastUpdateTime = clazz.getLastUpdateTime();
     }
 
-    public ClassInfoVo(Clazz clazz, List<UserVo> userList, List<HomeworkRelease> homeworkList, List<Role> roleList) {
+    public ClassInfoVo(Clazz clazz, List<UserVo> userList, List<HomeworkRelease> homeworkList) {
         this.classId = clazz.getClassId();
         this.className = clazz.getClassName();
         this.description = clazz.getDescription();
@@ -84,6 +78,5 @@ public class ClassInfoVo {
         this.lastUpdateTime = clazz.getLastUpdateTime();
         this.userList = userList;
         this.homeworkList = homeworkList;
-        this.roleList = roleList;
     }
 }
