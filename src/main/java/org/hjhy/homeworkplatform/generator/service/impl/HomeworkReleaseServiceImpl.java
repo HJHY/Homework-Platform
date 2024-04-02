@@ -233,7 +233,6 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
             throw new BaseException("查询条件不能为空");
         }
 
-        //todo 这里应该可以改的简洁一些
         LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>()
                 .eq(homeworkReleaseConditionDto.getHomeworkId() != null, HomeworkRelease::getHomeworkId, homeworkReleaseConditionDto.getHomeworkId())
                 .eq(homeworkReleaseConditionDto.getClassId() != null, HomeworkRelease::getClassId, homeworkReleaseConditionDto.getClassId())

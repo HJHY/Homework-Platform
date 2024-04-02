@@ -407,8 +407,12 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             throw new BaseException("查询条件不能为空");
         }
 
-        //todo 这里可以写的优雅一点
-        Page<Clazz> pageResult = this.page(page, new LambdaQueryWrapper<Clazz>().eq(clazzConditionDto.getClassName() != null, Clazz::getClassName, clazzConditionDto.getClassName()).eq(clazzConditionDto.getCreatorId() != null, Clazz::getCreatorId, clazzConditionDto.getCreatorId()).eq(clazzConditionDto.getDescription() != null, Clazz::getDescription, clazzConditionDto.getDescription()).eq(clazzConditionDto.getIsValid() != null, Clazz::getIsValid, clazzConditionDto.getIsValid()));
+        LambdaQueryWrapper<Clazz> queryWrapper = new LambdaQueryWrapper<Clazz>()
+                .eq(clazzConditionDto.getClassName() != null, Clazz::getClassName, clazzConditionDto.getClassName())
+                .eq(clazzConditionDto.getCreatorId() != null, Clazz::getCreatorId, clazzConditionDto.getCreatorId())
+                .eq(clazzConditionDto.getDescription() != null, Clazz::getDescription, clazzConditionDto.getDescription())
+                .eq(clazzConditionDto.getIsValid() != null, Clazz::getIsValid, clazzConditionDto.getIsValid());
+        Page<Clazz> pageResult = this.page(page, queryWrapper);
 
         //进行权限检查,前置切面无法完成检查
         for (Clazz clazz : pageResult.getRecords()) {
