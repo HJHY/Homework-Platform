@@ -22,7 +22,7 @@ public interface ClazzService extends IService<Clazz> {
 
     void updateClass(Integer classId, ClassDto classDto);
 
-    void deleteClass(Integer classId);
+    void deleteClass(Integer classId, Boolean mandatory);
 
     Clazz findClass(Integer classId);
 

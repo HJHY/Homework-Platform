@@ -129,22 +129,21 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
     @Override
     @Transactional
-    public void deleteClass(Integer classId) {
-        //检查班级内是否存在未结束作业
-        LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>().eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1).ge(HomeworkRelease::getEndTime, new Date());
-        List<HomeworkRelease> existingHomeworkList = homeworkReleaseService.list(queryWrapper);
-        if (!ObjectUtils.isEmpty(existingHomeworkList)) {
-            throw new BaseException("班级内存在未结束的作业,请先结束作业再删除班级");
+    public void deleteClass(Integer classId, Boolean mandatory) {
+        //不强制删除则检查班级内是否存在未结束作业
+        if (Boolean.FALSE.equals(mandatory)) {
+            LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>().eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1).ge(HomeworkRelease::getEndTime, new Date());
+            List<HomeworkRelease> existingHomeworkList = homeworkReleaseService.list(queryWrapper);
+            if (!ObjectUtils.isEmpty(existingHomeworkList)) {
+                throw new BaseException("班级内存在未结束的作业,请先结束作业再删除班级");
+            }
         }
-        //不存在未结束的作业,则删除所有的作业
-        LambdaUpdateWrapper<HomeworkRelease> homeworkUpdateQuery = new LambdaUpdateWrapper<HomeworkRelease>().set(HomeworkRelease::getIsValid, 0).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1);
-        homeworkReleaseService.update(homeworkUpdateQuery);
         //不存在未结束的作业,删除班级内的所有用户角色并做好缓存同步
         userClassRoleService.deleteUserClassRole(null, classId);
-        //删除班级分享码
-        deleteShareCodeInfo(classId);
         //删除班级并缓存同步
         deleteClazzSync(classId);
+        //删除班级分享码
+        deleteShareCodeInfo(classId);
     }
 
     @Override
@@ -446,41 +445,66 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
     @Override
     public Clazz getCachableClazz(Integer classId) {
-        Clazz clazzFormCache = getClazzFormCache(classId);
+        Clazz clazz = getClazzFormCache(classId);
         //使用双检锁
-        if (ObjectUtils.isEmpty(clazzFormCache)) {
+        if (ObjectUtils.isEmpty(clazz)) {
             RLock rLock = redissonClient.getReadWriteLock(RedisPrefixConst.CLASS_INFO_LOCK_PREFIX + classId).readLock();
             try {
-                //todo 这里没有再检查一次缓存,可能会有问题
-
                 rLock.lock();
-                Clazz clazzFromDB = getClazzFromDB(classId);
-                if (ObjectUtils.isEmpty(clazzFromDB)) {
-                    return null;
+                //再检查一次缓存
+                clazz = getClazzFormCache(classId);
+                if (ObjectUtils.isEmpty(clazz)) {
+                    clazz = getClazzFromDB(classId);
+                    if (ObjectUtils.isEmpty(clazz)) {
+                        return null;
+                    }
                 }
                 //设置缓存
-                setClazzCache(clazzFromDB);
-                return clazzFromDB;
+                setClazzCache(clazz);
             } finally {
                 rLock.unlock();
             }
         }
-        return clazzFormCache;
+        return clazz;
     }
 
     @Override
     @Transactional
     public void deleteClazzSync(Integer classId) {
-        //todo 删除缓存时也要删除作业的缓存避免数据不一致!!!
+        //删除班级内的作业
+        List<HomeworkRelease> homeworkReleaseList = homeworkReleaseService.list(new LambdaQueryWrapper<HomeworkRelease>()
+                .eq(HomeworkRelease::getClassId, classId)
+                .eq(HomeworkRelease::getIsValid, 1));
+        //获取每一个作业的锁
+        ArrayList<RLock> homeworkWLocks = new ArrayList<>(homeworkReleaseList.size());
+        homeworkReleaseList.forEach(homeworkRelease -> homeworkWLocks.add(redissonClient.getReadWriteLock(RedisPrefixConst.HOMEWORK_INFO_LOCK_PREFIX + homeworkRelease.getHomeworkId()).writeLock()));
+        //获取多个作业的组合锁
+        RLock homeworkMultiLock = redissonClient.getMultiLock(homeworkWLocks.toArray(new RLock[0]));
 
-        //获取写锁
+        //获取班级写锁
         RReadWriteLock readWriteLock = redissonClient.getReadWriteLock(RedisPrefixConst.CLASS_INFO_LOCK_PREFIX + classId);
-        RLock wLock = readWriteLock.writeLock();
-
+        RLock clazzLock = readWriteLock.writeLock();
         try {
-            wLock.lock();
-            log.info("删除操作加锁成功,锁内容{{}}", wLock.getName());
-            //删除缓存
+            /*删除作业信息*/
+            homeworkMultiLock.lock();
+            for (HomeworkRelease homeworkRelease : homeworkReleaseList) {
+                //删除缓存信息
+                homeworkReleaseService.invalidateHomeworkCache(homeworkRelease.getHomeworkId());
+                //判断作业是否已经删除
+                HomeworkRelease homework = homeworkReleaseService.getHomeworkFromDb(homeworkRelease.getHomeworkId());
+                if (ObjectUtils.isEmpty(homework) || homework.getIsValid() == 0) {
+                    log.info("作业{{}}已经被删除", homeworkRelease.getHomeworkId());
+                    continue;
+                }
+                homeworkRelease.setIsValid(0);
+            }
+            //删除作业
+            homeworkReleaseService.updateBatchById(homeworkReleaseList);
+
+            /*删除班级信息*/
+            clazzLock.lock();
+            log.info("删除操作加锁成功,锁内容{{}}", clazzLock.getName());
+            //删除班级缓存
             invalidateCache(classId);
             //判断是否已经删除
             Clazz clazz = getClazzFromDB(classId);
@@ -491,9 +515,13 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             //删除班级
             clazz.setIsValid(0);
             this.updateById(clazz);
+
         } finally {
-            wLock.unlock();
-            log.info("删除操作解锁成功,锁内容{{}}", wLock.getName());
+            //释放班级写锁
+            clazzLock.unlock();
+            //释放作业组合锁
+            homeworkMultiLock.unlock();
+            log.info("删除操作解锁成功,锁内容{{}}", clazzLock.getName());
         }
     }
 }

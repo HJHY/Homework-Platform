@@ -46,8 +46,8 @@ public class ClazzController {
     @Operation(summary = "删除班级", description = "删除班级接口描述")
     @HasRole(roles = {RoleConstant.CLASS_CREATOR})
     @DeleteMapping("/classes/{classId}")
-    public Result<?> deleteClass(@PathVariable Integer classId) {
-        clazzService.deleteClass(classId);
+    public Result<?> deleteClass(@PathVariable Integer classId, @RequestParam(required = false, defaultValue = "false") Boolean mandatory) {
+        clazzService.deleteClass(classId, mandatory);
         return Result.ok();
     }
 
