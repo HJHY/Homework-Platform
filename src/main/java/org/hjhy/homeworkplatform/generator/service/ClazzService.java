@@ -54,7 +54,7 @@ public interface ClazzService extends IService<Clazz> {
 
     Clazz getClazzFromDB(Integer classId);
 
-    Clazz getCachableClazz(Integer classId);
+    Clazz getCacheableClazz(Integer classId);
 
     void deleteClazzSync(Integer classId);
 }

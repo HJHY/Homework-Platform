@@ -97,7 +97,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
         //令牌通过验证,开始执行业务
         var user = userService.getById(userId);
         var homeworkRelease = homeworkReleaseService.getCacheableHomework(homeworkId);
-        var clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
+        var clazz = clazzService.getCacheableClazz(homeworkRelease.getClassId());
         //这里应该要求所有名字构成的参数都不应该为null
         var filePath = homeworkId + "/" + clazz.getClassName() + "-" + user.getRealname() + "-" + homeworkRelease.getHomeworkName() + fileSuffix;
         log.info("文件全路径：{}", filePath);
@@ -189,7 +189,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
 
             //推送提醒信息
             User user = userService.getById(userId);
-            Clazz clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
+            Clazz clazz = clazzService.getCacheableClazz(homeworkRelease.getClassId());
 
             String notifyMessage = MessageConstant.HOMEWORK_REMINDER_MESSAGE.formatted(user.getRealname(), clazz.getClassName(), homeworkRelease.getHomeworkName(), homeworkRelease.getEndTime(), homeworkRelease.getDescription());
 

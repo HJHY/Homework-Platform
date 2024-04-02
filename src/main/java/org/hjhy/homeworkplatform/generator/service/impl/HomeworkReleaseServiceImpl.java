@@ -154,7 +154,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
     }
 
     private void notifyHomeworkReleaseMessage(Integer userId, HomeworkRelease homeworkRelease) {
-        var clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
+        var clazz = clazzService.getCacheableClazz(homeworkRelease.getClassId());
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         var endTime = simpleDateFormat.format(homeworkRelease.getEndTime());
         //采用异步的方式去执行可以极大提高效率
@@ -248,7 +248,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
         //检查权限
         CountDownLatch countDownLatch = new CountDownLatch(pageResult.getRecords().size());
         pageResult.getRecords().forEach(homeworkRelease -> executor.submit(() -> {
-            var clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
+            var clazz = clazzService.getCacheableClazz(homeworkRelease.getClassId());
             userClassRoleService.checkUserClassPrivilege(homeworkRelease.getCreatorId(), clazz.getClassId(), new RoleConstant[]{RoleConstant.CLASS_CREATOR}, null);
             countDownLatch.countDown();
         }));

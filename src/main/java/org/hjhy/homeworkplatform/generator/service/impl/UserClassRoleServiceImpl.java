@@ -60,14 +60,14 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
     @Override
     public void checkUserClassPrivilege(Integer userId, Integer classId, RoleConstant[] roles, HttpServletRequest request) {
         //使用缓存检查班级是否存在
-        Clazz clazz = clazzService.getCachableClazz(classId);
+        Clazz clazz = clazzService.getCacheableClazz(classId);
         if (ObjectUtils.isEmpty(clazz)) {
             log.error("classId为{{}}的班级不存在", classId);
             throw new BaseException(StatusCode.CLASS_NOT_EXISTED);
         }
 
         //检查用户在班级中的角色(一个用户可能存在多个角色)
-        List<UserClassRole> userClassRoleList = getCachableUserClassRoleList(userId, classId);
+        List<UserClassRole> userClassRoleList = getCacheableUserClassRoleList(userId, classId);
         if (ObjectUtils.isEmpty(userClassRoleList)) {
             log.error("当前用户{{}}没有加入id为{{}}的班级", userId, classId);
             throw new BaseException(StatusCode.NOT_JOIN_CLASS);
@@ -87,7 +87,7 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
     }
 
     @Override
-    public List<UserClassRole> getCachableUserClassRoleList(Integer userId, Integer classId) {
+    public List<UserClassRole> getCacheableUserClassRoleList(Integer userId, Integer classId) {
         //不允许userId和classId同时为空
         if (ObjectUtils.isEmpty(classId) || ObjectUtils.isEmpty(userId)) {
             log.warn("classId和userId不能为空");

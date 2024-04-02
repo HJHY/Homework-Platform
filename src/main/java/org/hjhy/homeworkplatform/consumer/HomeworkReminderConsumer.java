@@ -64,12 +64,12 @@ public class HomeworkReminderConsumer {
             }
             User user = userService.getById(homeworkReminderDto.getUserId());
             //进行作业信息推送的时候判断用户是否还在班级中
-            if (userClassRoleService.getCachableUserClassRoleList(user.getId(), homeworkRelease.getClassId()).stream().noneMatch(userClassRole -> userClassRole.getRoleId().equals(RoleConstant.CLASS_MEMBER.getRoleId()))) {
+            if (userClassRoleService.getCacheableUserClassRoleList(user.getId(), homeworkRelease.getClassId()).stream().noneMatch(userClassRole -> userClassRole.getRoleId().equals(RoleConstant.CLASS_MEMBER.getRoleId()))) {
                 log.info("用户不在班级中,不推送作业截止提醒");
                 return;
             }
 
-            Clazz clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
+            Clazz clazz = clazzService.getCacheableClazz(homeworkRelease.getClassId());
 
             String content = MessageConstant.DDL_MESSAGE.formatted(user.getRealname(), clazz.getClassName(), homeworkRelease.getHomeworkName(), homeworkRelease.getEndTime(), homeworkRelease.getDescription());
             EmailDto emailDto = EmailDto.builder().toEmail(user.getEmail()).subject("作业截止提醒").content(content).build();

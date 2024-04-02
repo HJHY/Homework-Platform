@@ -39,7 +39,7 @@ public interface UserClassRoleService extends IService<UserClassRole> {
      * @param classId classId
      * @return list
      */
-    List<UserClassRole> getCachableUserClassRoleList(Integer userId, Integer classId);
+    List<UserClassRole> getCacheableUserClassRoleList(Integer userId, Integer classId);
 
     /**
      * 删除用户在班级中的角色

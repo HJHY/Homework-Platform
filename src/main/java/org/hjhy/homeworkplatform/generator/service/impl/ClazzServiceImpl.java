@@ -148,7 +148,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
     @Override
     public Clazz findClass(Integer classId) {
-        return getCachableClazz(classId);
+        return getCacheableClazz(classId);
     }
 
     @Override
@@ -161,7 +161,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
     @Override
     public ClassInfoVo detail(Integer classId) {
-        var clazz = getCachableClazz(classId);
+        var clazz = getCacheableClazz(classId);
         //查询加入特定班级的用户详细信息
         var userIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getClassId, classId)).stream().map(UserClassRole::getUserId)
                 //过滤掉创建者
@@ -188,7 +188,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         }
 
         //检查是否已经加入班级
-        List<UserClassRole> userClassRoleList = userClassRoleService.getCachableUserClassRoleList(userId, classId);
+        List<UserClassRole> userClassRoleList = userClassRoleService.getCacheableUserClassRoleList(userId, classId);
         if (!ObjectUtils.isEmpty(userClassRoleList)) {
             throw new BaseException(StatusCode.ALREADY_JOIN_CLASS);
         }
@@ -206,13 +206,13 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     @Override
     public void exitClass(Integer userId, Integer classId) {
         //检查是否是班级创建者
-        Clazz clazz = getCachableClazz(classId);
+        Clazz clazz = getCacheableClazz(classId);
         if (clazz.getCreatorId().equals(RequestContext.getAuthInfo().getUserId())) {
             log.info("班级创建者无法退出班级");
             throw new BaseException("班级创建者无法退出班级");
         }
 
-        var userClassRoleList = userClassRoleService.getCachableUserClassRoleList(userId, classId);
+        var userClassRoleList = userClassRoleService.getCacheableUserClassRoleList(userId, classId);
 
         //已经退出班级
         if (ObjectUtils.isEmpty(userClassRoleList)) {
@@ -363,7 +363,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         List<CompletableFuture<Void>> asyncClazzTaskList = new ArrayList<>();
         for (ClassInfoVo classInfoVo : list) {
             CompletableFuture<Void> runAsync = CompletableFuture.runAsync(() -> {
-                Clazz clazz = this.getCachableClazz(classInfoVo.getClassId());
+                Clazz clazz = this.getCacheableClazz(classInfoVo.getClassId());
                 classInfoVo.setClassName(clazz.getClassName());
             }, executorForClazz);
             asyncClazzTaskList.add(runAsync);
@@ -444,7 +444,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     }
 
     @Override
-    public Clazz getCachableClazz(Integer classId) {
+    public Clazz getCacheableClazz(Integer classId) {
         Clazz clazz = getClazzFormCache(classId);
         //使用双检锁
         if (ObjectUtils.isEmpty(clazz)) {
