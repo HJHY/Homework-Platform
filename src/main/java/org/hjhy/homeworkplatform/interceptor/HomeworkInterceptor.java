@@ -47,7 +47,7 @@ public class HomeworkInterceptor implements HandlerInterceptor {
         int homeworkId = Integer.parseInt(homeworkIdString); // 将参数值转换为整数类型
 
         //查询作业对应的班级
-        HomeworkRelease homeworkRelease = homeworkReleaseService.getById(homeworkId);
+        HomeworkRelease homeworkRelease = homeworkReleaseService.getCacheableHomework(homeworkId);
         if (ObjectUtils.isEmpty(homeworkRelease) || homeworkRelease.getIsValid().equals(0)) {
             log.warn("作业不存在或已被删除");
             throw new BaseException(StatusCode.HOMEWORK_NOT_EXISTED);

@@ -96,7 +96,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
 
         //令牌通过验证,开始执行业务
         var user = userService.getById(userId);
-        var homeworkRelease = homeworkReleaseService.getById(homeworkId);
+        var homeworkRelease = homeworkReleaseService.getCacheableHomework(homeworkId);
         var clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
         //这里应该要求所有名字构成的参数都不应该为null
         var filePath = homeworkId + "/" + clazz.getClassName() + "-" + user.getRealname() + "-" + homeworkRelease.getHomeworkName() + fileSuffix;
@@ -176,7 +176,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
     @Override
     public void homeworkReminder(Integer homeworkId) {
         /*查询用户是否已经提交作业,已提交的不需要再次通知*/
-        HomeworkRelease homeworkRelease = homeworkReleaseService.getById(homeworkId);
+        HomeworkRelease homeworkRelease = homeworkReleaseService.getCacheableHomework(homeworkId);
 
         List<Integer> userIdList = userClassRoleService.getStudentIdInClazz(homeworkRelease.getClassId());
         userIdList.forEach(userId -> executor.submit(() -> {

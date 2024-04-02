@@ -451,6 +451,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         if (ObjectUtils.isEmpty(clazzFormCache)) {
             RLock rLock = redissonClient.getReadWriteLock(RedisPrefixConst.CLASS_INFO_LOCK_PREFIX + classId).readLock();
             try {
+                //todo 这里没有再检查一次缓存,可能会有问题
+
                 rLock.lock();
                 Clazz clazzFromDB = getClazzFromDB(classId);
                 if (ObjectUtils.isEmpty(clazzFromDB)) {
@@ -469,6 +471,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     @Override
     @Transactional
     public void deleteClazzSync(Integer classId) {
+        //todo 删除缓存时也要删除作业的缓存避免数据不一致!!!
+
         //获取写锁
         RReadWriteLock readWriteLock = redissonClient.getReadWriteLock(RedisPrefixConst.CLASS_INFO_LOCK_PREFIX + classId);
         RLock wLock = readWriteLock.writeLock();

@@ -28,4 +28,16 @@ public interface HomeworkReleaseService extends IService<HomeworkRelease> {
     PageResult<HomeworkRelease> getUncommittedHomework(Integer userId, Page<HomeworkRelease> page);
 
     PageResult<HomeworkRelease> condition(HomeworkReleaseConditionDto homeworkReleaseConditionDto, Page<HomeworkRelease> page) throws InterruptedException;
+
+    void setHomeworkCache(HomeworkRelease homeworkRelease);
+
+    HomeworkRelease getHomeworkFromCache(Integer homeworkId);
+
+    void invalidateHomeworkCache(Integer homeworkId);
+
+    HomeworkRelease getHomeworkFromDb(Integer homeworkId);
+
+    HomeworkRelease getCacheableHomework(Integer homeworkId);
+
+    void deleteHomeworkSync(Integer homeworkId);
 }

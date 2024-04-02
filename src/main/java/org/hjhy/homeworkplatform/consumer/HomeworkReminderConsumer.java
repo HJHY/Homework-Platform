@@ -57,7 +57,7 @@ public class HomeworkReminderConsumer {
         }
 
         try {
-            HomeworkRelease homeworkRelease = homeworkReleaseService.getById(homeworkReminderDto.getHomeworkId());
+            HomeworkRelease homeworkRelease = homeworkReleaseService.getCacheableHomework(homeworkReminderDto.getHomeworkId());
             if (ObjectUtils.isEmpty(homeworkRelease)) {
                 log.error("作业信息不存在");
                 return;

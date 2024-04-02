@@ -1,14 +1,12 @@
 package org.hjhy.homeworkplatform.generator.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.hjhy.homeworkplatform.constant.MessageConstant;
-import org.hjhy.homeworkplatform.constant.RoleConstant;
+import org.hjhy.homeworkplatform.constant.*;
 import org.hjhy.homeworkplatform.dto.EmailDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseConditionDto;
 import org.hjhy.homeworkplatform.dto.HomeworkReleaseDto;
@@ -24,7 +22,11 @@ import org.hjhy.homeworkplatform.generator.service.*;
 import org.hjhy.homeworkplatform.utils.CommonUtils;
 import org.hjhy.homeworkplatform.vo.HomeworkReleaseVo;
 import org.hjhy.homeworkplatform.vo.PageResult;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
@@ -58,17 +60,23 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
     private final MessageService messageService;
     private final PushSettingService pushSettingService;
     private final HomeworkReminderMessageService homeworkReminderMessageService;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedissonClient redissonClient;
 
     //创建一个线程池
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    //创建一个线程池(用于缓存延迟双删)
+    private final ThreadPoolExecutor executorForCacheDelayDelete = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
-    public HomeworkReleaseServiceImpl(@Lazy ClazzService clazzService, UserClassRoleService userClassRoleService, UserService userService, MessageService messageService, PushSettingService pushSettingService, HomeworkReminderMessageService homeworkReminderMessageService) {
+    public HomeworkReleaseServiceImpl(@Lazy ClazzService clazzService, UserClassRoleService userClassRoleService, UserService userService, MessageService messageService, PushSettingService pushSettingService, HomeworkReminderMessageService homeworkReminderMessageService, RedisTemplate<String, Object> redisTemplate, RedissonClient redissonClient) {
         this.clazzService = clazzService;
         this.userClassRoleService = userClassRoleService;
         this.userService = userService;
         this.messageService = messageService;
         this.pushSettingService = pushSettingService;
         this.homeworkReminderMessageService = homeworkReminderMessageService;
+        this.redisTemplate = redisTemplate;
+        this.redissonClient = redissonClient;
     }
 
     @Override
@@ -86,7 +94,13 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
                 .creatorId(userId)
                 .description(homeworkReleaseDto.getDescription())
                 .endTime(homeworkReleaseDto.getEndTime()).build();
-        this.save(homeworkRelease);
+
+        try {
+            this.save(homeworkRelease);
+        } catch (DuplicateKeyException e) {
+            log.error("重复发布内容相同的作业{{}}", homeworkReleaseDto);
+            throw new BaseException(StatusCode.REPEAT_SUBMIT);
+        }
 
         //推送作业发布通知
         notifyHomework(homeworkRelease);
@@ -162,25 +176,37 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
 
 
     @Override
+    @Transactional
     public void deleteHomework(Integer homeworkId) {
-        this.update(new LambdaUpdateWrapper<HomeworkRelease>()
-                .set(HomeworkRelease::getIsValid, 0)
-                .eq(HomeworkRelease::getHomeworkId, homeworkId));
+        deleteHomeworkSync(homeworkId);
     }
 
     @Override
     public void updateHomework(Integer homeworkId, HomeworkReleaseDto homeworkReleaseDto) {
+        //先改数据库再删除缓存
         var homeworkRelease = HomeworkRelease.builder()
                 .homeworkId(homeworkId)
                 .homeworkName(homeworkReleaseDto.getHomeworkName())
                 .endTime(homeworkReleaseDto.getEndTime())
                 .description(homeworkReleaseDto.getDescription()).build();
         this.updateById(homeworkRelease);
+        //删除缓存
+        invalidateHomeworkCache(homeworkId);
+        //延迟双删
+        executorForCacheDelayDelete.submit(() -> {
+            try {
+                //延迟5s再删除一次
+                Thread.sleep(5000);
+                invalidateHomeworkCache(homeworkId);
+            } catch (InterruptedException e) {
+                log.error("缓存延迟双删失败");
+            }
+        });
     }
 
     @Override
     public HomeworkReleaseVo findHomework(Integer homeworkId) {
-        var homeworkRelease = this.getById(homeworkId);
+        var homeworkRelease = getCacheableHomework(homeworkId);
         return new HomeworkReleaseVo(homeworkRelease);
     }
 
@@ -234,6 +260,78 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
         }
 
         return new PageResult<>(pageResult.getRecords(), pageResult.getRecords().size(), pageResult.getTotal());
+    }
+
+    @Override
+    public void setHomeworkCache(HomeworkRelease homeworkRelease) {
+        redisTemplate.opsForValue().set(RedisPrefixConst.HOMEWORK_INFO_PREFIX + homeworkRelease.getHomeworkId(), homeworkRelease, HomeworkConst.HOMEWORK_INFO_CACHE_TIME, TimeUnit.HOURS);
+    }
+
+    @Override
+    public HomeworkRelease getHomeworkFromCache(Integer homeworkId) {
+        return (HomeworkRelease) redisTemplate.opsForValue().get(RedisPrefixConst.HOMEWORK_INFO_PREFIX + homeworkId);
+    }
+
+    @Override
+    public void invalidateHomeworkCache(Integer homeworkId) {
+        redisTemplate.delete(RedisPrefixConst.HOMEWORK_INFO_PREFIX + homeworkId);
+    }
+
+    @Override
+    public HomeworkRelease getHomeworkFromDb(Integer homeworkId) {
+        HomeworkRelease homeworkRelease = this.getById(homeworkId);
+        if (ObjectUtils.isEmpty(homeworkRelease) || homeworkRelease.getIsValid() == 0) {
+            return null;
+        }
+        return homeworkRelease;
+    }
+
+    @Override
+    public HomeworkRelease getCacheableHomework(Integer homeworkId) {
+        HomeworkRelease homeworkRelease = getHomeworkFromCache(homeworkId);
+        if (ObjectUtils.isEmpty(homeworkRelease)) {
+            RLock rLock = redissonClient.getReadWriteLock(RedisPrefixConst.HOMEWORK_INFO_LOCK_PREFIX + homeworkId).readLock();
+            //加锁
+            try {
+                rLock.lock();
+                homeworkRelease = getHomeworkFromCache(homeworkId);
+                if (ObjectUtils.isEmpty(homeworkRelease)) {
+                    homeworkRelease = getHomeworkFromDb(homeworkId);
+                    if (ObjectUtils.isEmpty(homeworkRelease)) {
+                        log.warn("作业{{}}不存在或已被删除", homeworkId);
+                        return null;
+                    }
+                    setHomeworkCache(homeworkRelease);
+                }
+            } finally {
+                rLock.unlock();
+            }
+        }
+        return homeworkRelease;
+    }
+
+    @Override
+    @Transactional
+    public void deleteHomeworkSync(Integer homeworkId) {
+        //获取写锁
+        RLock wLock = redissonClient.getReadWriteLock(RedisPrefixConst.HOMEWORK_INFO_LOCK_PREFIX + homeworkId).writeLock();
+        try {
+            wLock.lock();
+            log.info("删除作业{{}}加锁成功", homeworkId);
+            invalidateHomeworkCache(homeworkId);
+            //判断是否已经删除
+            HomeworkRelease homeworkRelease = this.getById(homeworkId);
+            if (ObjectUtils.isEmpty(homeworkRelease) || homeworkRelease.getIsValid() == 0) {
+                log.info("作业{{}}已经被删除,无需再次删除", homeworkId);
+                return;
+            }
+            //删除作业
+            homeworkRelease.setIsValid(0);
+            this.updateById(homeworkRelease);
+        } finally {
+            wLock.unlock();
+            log.info("删除作业{{}}解锁成功", homeworkId);
+        }
     }
 }
 

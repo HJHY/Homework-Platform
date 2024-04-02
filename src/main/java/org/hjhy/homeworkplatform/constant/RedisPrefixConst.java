@@ -47,4 +47,10 @@ public class RedisPrefixConst {
 
     /*班级信息缓存锁的前缀*/
     public static final String CLASS_INFO_LOCK_PREFIX = "class_info_lock_prefix:";
+
+    /*作业信息缓存的前缀*/
+    public static final String HOMEWORK_INFO_PREFIX = "homework_info_prefix:";
+
+    /*作业信息缓存锁的前缀*/
+    public static final String HOMEWORK_INFO_LOCK_PREFIX = "homework_info_lock_prefix:";
 }
