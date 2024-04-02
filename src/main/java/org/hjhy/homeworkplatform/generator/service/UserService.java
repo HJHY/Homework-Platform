@@ -20,7 +20,6 @@ public interface UserService extends IService<User> {
 
     void updateUserInfo(User user);
 
-
     void updatePassword(Integer userId, PasswordDto passwordDto);
 
 }
