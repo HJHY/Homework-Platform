@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.hjhy.homeworkplatform.constant.ClazzConst;
 import org.hjhy.homeworkplatform.constant.RedisPrefixConst;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.constant.StatusCode;
@@ -25,6 +26,7 @@ import org.springframework.util.ObjectUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author 13746
@@ -57,15 +59,15 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
 
     @Override
     public void checkUserClassPrivilege(Integer userId, Integer classId, RoleConstant[] roles, HttpServletRequest request) {
-        //检查班级是否存在
-        var existed = clazzService.exists(new LambdaQueryWrapper<Clazz>().eq(Clazz::getClassId, classId).eq(Clazz::getIsValid, 1));
-        if (!existed) {
+        //使用缓存检查班级是否存在
+        Clazz clazz = clazzService.getCachableClazz(classId);
+        if (ObjectUtils.isEmpty(clazz)) {
             log.error("classId为{{}}的班级不存在", classId);
             throw new BaseException(StatusCode.CLASS_NOT_EXISTED);
         }
 
         //检查用户在班级中的角色(一个用户可能存在多个角色)
-        var userClassRoleList = getCachableUserClassRoleList(userId, classId).stream().map(UserClassRole::getRoleId).toList();
+        List<UserClassRole> userClassRoleList = getCachableUserClassRoleList(userId, classId);
         if (ObjectUtils.isEmpty(userClassRoleList)) {
             log.error("当前用户{{}}没有加入id为{{}}的班级", userId, classId);
             throw new BaseException(StatusCode.NOT_JOIN_CLASS);
@@ -77,7 +79,8 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
         }
 
         //检查用户权限
-        if (Arrays.stream(roles).noneMatch(roleConstant -> userClassRoleList.contains(roleConstant.getRoleId()))) {
+        List<Integer> userClassRoles = userClassRoleList.stream().map(UserClassRole::getRoleId).toList();
+        if (Arrays.stream(roles).noneMatch(roleConstant -> userClassRoles.contains(roleConstant.getRoleId()))) {
             log.error("用户{{}}没有访问{{}}的权限", userId, request.getRequestURI());
             throw new BaseException(StatusCode.NO_PRIVILEGE);
         }
@@ -166,7 +169,10 @@ public class UserClassRoleServiceImpl extends ServiceImpl<UserClassRoleMapper, U
     }
 
     private void setUserClassRoleListToCache(Integer userId, Integer classId, List<UserClassRole> userClassRoleList) {
-        redisTemplate.opsForHash().put(RedisPrefixConst.USER_CLASS_ROLE_PREFIX + classId, String.valueOf(userId), userClassRoleList);
+        String key = RedisPrefixConst.USER_CLASS_ROLE_PREFIX + classId;
+        redisTemplate.opsForHash().put(key, String.valueOf(userId), userClassRoleList);
+        //设置缓存过期时间(这里如果报错直接记录日志,不影响业务)
+        redisTemplate.expire(key, ClazzConst.USER_CLASS_ROLE_CACHE_EXPIRE_TIME, TimeUnit.HOURS);
     }
 
     private List<UserClassRole> getUserClassRoleListFromDB(Integer userId, Integer classId) {

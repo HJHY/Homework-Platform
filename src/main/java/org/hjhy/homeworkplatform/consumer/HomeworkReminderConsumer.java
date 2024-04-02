@@ -69,7 +69,7 @@ public class HomeworkReminderConsumer {
                 return;
             }
 
-            Clazz clazz = clazzService.getById(homeworkRelease.getClassId());
+            Clazz clazz = clazzService.getCachableClazz(homeworkRelease.getClassId());
 
             String content = MessageConstant.DDL_MESSAGE.formatted(user.getRealname(), clazz.getClassName(), homeworkRelease.getHomeworkName(), homeworkRelease.getEndTime(), homeworkRelease.getDescription());
             EmailDto emailDto = EmailDto.builder().toEmail(user.getEmail()).subject("作业截止提醒").content(content).build();

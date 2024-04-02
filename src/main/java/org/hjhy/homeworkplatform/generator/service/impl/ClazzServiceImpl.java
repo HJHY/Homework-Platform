@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
+import org.hjhy.homeworkplatform.constant.ClazzConst;
 import org.hjhy.homeworkplatform.constant.RedisPrefixConst;
 import org.hjhy.homeworkplatform.constant.RoleConstant;
 import org.hjhy.homeworkplatform.constant.StatusCode;
@@ -68,6 +69,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     private final ThreadPoolExecutor executorForUser = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     //创建一个线程池
     private final ThreadPoolExecutor executorForClazz = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    //创建一个线程池
+    private final ThreadPoolExecutor executorForDelayDelete = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
     public ClazzServiceImpl(UserClassRoleService userClassRoleService, UserService userService, RedisTemplate<String, Object> redisTemplate, HomeworkReleaseService homeworkReleaseService, RedissonClient redissonClient) {
         this.userClassRoleService = userClassRoleService;
@@ -109,19 +112,26 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     @Override
     public void updateClass(Integer classId, ClassDto classDto) {
         Clazz clazz = Clazz.builder().classId(classId).className(classDto.getClassName()).description(classDto.getDescription()).build();
+        //先改数据库再删除缓存
         this.updateById(clazz);
+        invalidateCache(classId);
+
+        //延迟双删(间隔10s)
+        executorForDelayDelete.submit(() -> {
+            try {
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            invalidateCache(classId);
+        });
     }
 
     @Override
     @Transactional
     public void deleteClass(Integer classId) {
-        Clazz clazz = Clazz.builder().classId(classId).isValid(0).build();
-
         //检查班级内是否存在未结束作业
-        LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>()
-                .eq(HomeworkRelease::getClassId, classId)
-                .eq(HomeworkRelease::getIsValid, 1)
-                .ge(HomeworkRelease::getEndTime, new Date());
+        LambdaQueryWrapper<HomeworkRelease> queryWrapper = new LambdaQueryWrapper<HomeworkRelease>().eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1).ge(HomeworkRelease::getEndTime, new Date());
         List<HomeworkRelease> existingHomeworkList = homeworkReleaseService.list(queryWrapper);
         if (!ObjectUtils.isEmpty(existingHomeworkList)) {
             throw new BaseException("班级内存在未结束的作业,请先结束作业再删除班级");
@@ -129,16 +139,17 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         //不存在未结束的作业,则删除所有的作业
         LambdaUpdateWrapper<HomeworkRelease> homeworkUpdateQuery = new LambdaUpdateWrapper<HomeworkRelease>().set(HomeworkRelease::getIsValid, 0).eq(HomeworkRelease::getClassId, classId).eq(HomeworkRelease::getIsValid, 1);
         homeworkReleaseService.update(homeworkUpdateQuery);
-
         //不存在未结束的作业,删除班级内的所有用户角色并做好缓存同步
         userClassRoleService.deleteUserClassRole(null, classId);
-
-        this.updateById(clazz);
+        //删除班级分享码
+        deleteShareCodeInfo(classId);
+        //删除班级并缓存同步
+        deleteClazzSync(classId);
     }
 
     @Override
     public Clazz findClass(Integer classId) {
-        return this.getById(classId);
+        return getCachableClazz(classId);
     }
 
     @Override
@@ -151,7 +162,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
     @Override
     public ClassInfoVo detail(Integer classId) {
-        var clazz = this.getById(classId);
+        var clazz = getCachableClazz(classId);
         //查询加入特定班级的用户详细信息
         var userIdList = userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().eq(UserClassRole::getClassId, classId)).stream().map(UserClassRole::getUserId)
                 //过滤掉创建者
@@ -196,7 +207,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     @Override
     public void exitClass(Integer userId, Integer classId) {
         //检查是否是班级创建者
-        Clazz clazz = this.getById(classId);
+        Clazz clazz = getCachableClazz(classId);
         if (clazz.getCreatorId().equals(RequestContext.getAuthInfo().getUserId())) {
             log.info("班级创建者无法退出班级");
             throw new BaseException("班级创建者无法退出班级");
@@ -270,6 +281,18 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         return (String) redisTemplate.opsForValue().get(RedisPrefixConst.CLASS_ID_TO_SHARE_CODE_PREFIX + classId);
     }
 
+    /**
+     * 删除班级分享码的信息
+     * @param classId classId
+     */
+    public void deleteShareCodeInfo(Integer classId) {
+        //删除classId到shareCode的映射
+        redisTemplate.delete(RedisPrefixConst.CLASS_ID_TO_SHARE_CODE_PREFIX + classId);
+        //删除shareCode到classId的映射
+        String shareCode = getShareCode(classId);
+        redisTemplate.delete(RedisPrefixConst.SHARED_CODE_TO_CLASS_ID_PREFIX + shareCode);
+    }
+
     @Override
     public List<Integer> queryClassAdmin(Integer classId) {
         return userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getUserId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()).eq(UserClassRole::getIsValid, 1)).stream().map(UserClassRole::getUserId).toList();
@@ -304,11 +327,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             //删除缓存
             userClassRoleService.invalidateUserClassRoleCache(null, classId);
             //删除管理员
-            LambdaUpdateWrapper<UserClassRole> updateWrapper = new LambdaUpdateWrapper<UserClassRole>()
-                    .set(UserClassRole::getIsValid, 0)
-                    .eq(UserClassRole::getClassId, classId)
-                    .eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId())
-                    .eq(UserClassRole::getIsValid, 1);
+            LambdaUpdateWrapper<UserClassRole> updateWrapper = new LambdaUpdateWrapper<UserClassRole>().set(UserClassRole::getIsValid, 0).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()).eq(UserClassRole::getIsValid, 1);
             userClassRoleService.update(updateWrapper);
 
             //添加班级内用户角色信息
@@ -345,7 +364,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         List<CompletableFuture<Void>> asyncClazzTaskList = new ArrayList<>();
         for (ClassInfoVo classInfoVo : list) {
             CompletableFuture<Void> runAsync = CompletableFuture.runAsync(() -> {
-                Clazz clazz = this.getById(classInfoVo.getClassId());
+                Clazz clazz = this.getCachableClazz(classInfoVo.getClassId());
                 classInfoVo.setClassName(clazz.getClassName());
             }, executorForClazz);
             asyncClazzTaskList.add(runAsync);
@@ -389,11 +408,8 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
             throw new BaseException("查询条件不能为空");
         }
 
-        Page<Clazz> pageResult = this.page(page, new LambdaQueryWrapper<Clazz>()
-                .eq(clazzConditionDto.getClassName() != null, Clazz::getClassName, clazzConditionDto.getClassName())
-                .eq(clazzConditionDto.getCreatorId() != null, Clazz::getCreatorId, clazzConditionDto.getCreatorId())
-                .eq(clazzConditionDto.getDescription() != null, Clazz::getDescription, clazzConditionDto.getDescription())
-                .eq(clazzConditionDto.getIsValid() != null, Clazz::getIsValid, clazzConditionDto.getIsValid()));
+        //todo 这里可以写的优雅一点
+        Page<Clazz> pageResult = this.page(page, new LambdaQueryWrapper<Clazz>().eq(clazzConditionDto.getClassName() != null, Clazz::getClassName, clazzConditionDto.getClassName()).eq(clazzConditionDto.getCreatorId() != null, Clazz::getCreatorId, clazzConditionDto.getCreatorId()).eq(clazzConditionDto.getDescription() != null, Clazz::getDescription, clazzConditionDto.getDescription()).eq(clazzConditionDto.getIsValid() != null, Clazz::getIsValid, clazzConditionDto.getIsValid()));
 
         //进行权限检查,前置切面无法完成检查
         for (Clazz clazz : pageResult.getRecords()) {
@@ -402,8 +418,80 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
 
         return new PageResult<>(pageResult.getRecords(), pageResult.getRecords().size(), pageResult.getTotal());
     }
+
+    @Override
+    public void setClazzCache(Clazz clazz) {
+        redisTemplate.opsForValue().set(RedisPrefixConst.CLASS_INFO_PREFIX + clazz.getClassId(), clazz, ClazzConst.CLASS_INFO_CACHE_EXPIRE_TIME, TimeUnit.HOURS);
+    }
+
+    @Override
+    public Clazz getClazzFormCache(Integer classId) {
+        return (Clazz) redisTemplate.opsForValue().get(RedisPrefixConst.CLASS_INFO_PREFIX + classId);
+    }
+
+    @Override
+    public void invalidateCache(Integer classId) {
+        redisTemplate.delete(RedisPrefixConst.CLASS_INFO_PREFIX + classId);
+    }
+
+    @Override
+    public Clazz getClazzFromDB(Integer classId) {
+        //这里不能直接通过id进行检查,还需要判断班级是否已经删除
+        Clazz clazz = this.getById(classId);
+        if (ObjectUtils.isEmpty(clazz) || clazz.getIsValid() == 0) {
+            return null;
+        }
+        return clazz;
+    }
+
+    @Override
+    public Clazz getCachableClazz(Integer classId) {
+        Clazz clazzFormCache = getClazzFormCache(classId);
+        //使用双检锁
+        if (ObjectUtils.isEmpty(clazzFormCache)) {
+            RLock rLock = redissonClient.getReadWriteLock(RedisPrefixConst.CLASS_INFO_LOCK_PREFIX + classId).readLock();
+            try {
+                rLock.lock();
+                Clazz clazzFromDB = getClazzFromDB(classId);
+                if (ObjectUtils.isEmpty(clazzFromDB)) {
+                    return null;
+                }
+                //设置缓存
+                setClazzCache(clazzFromDB);
+                return clazzFromDB;
+            } finally {
+                rLock.unlock();
+            }
+        }
+        return clazzFormCache;
+    }
+
+    @Override
+    @Transactional
+    public void deleteClazzSync(Integer classId) {
+        //获取写锁
+        RReadWriteLock readWriteLock = redissonClient.getReadWriteLock(RedisPrefixConst.CLASS_INFO_LOCK_PREFIX + classId);
+        RLock wLock = readWriteLock.writeLock();
+
+        try {
+            wLock.lock();
+            log.info("删除操作加锁成功,锁内容{{}}", wLock.getName());
+            //删除缓存
+            invalidateCache(classId);
+            //判断是否已经删除
+            Clazz clazz = getClazzFromDB(classId);
+            if (ObjectUtils.isEmpty(clazz) || clazz.getIsValid() == 0) {
+                log.info("班级{{}}已经被删除", classId);
+                return;
+            }
+            //删除班级
+            clazz.setIsValid(0);
+            this.updateById(clazz);
+        } finally {
+            wLock.unlock();
+            log.info("删除操作解锁成功,锁内容{{}}", wLock.getName());
+        }
+    }
 }
-
-
 
 

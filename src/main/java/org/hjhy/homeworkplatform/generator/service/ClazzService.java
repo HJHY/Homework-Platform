@@ -45,4 +45,16 @@ public interface ClazzService extends IService<Clazz> {
     PageResult<ClassInfoVo> getCreatedClasses(Integer userId, Page<Clazz> page) throws InterruptedException;
 
     PageResult<Clazz> condition(Page<Clazz> page, ClazzConditionDto ClazzConditionDto);
+
+    void setClazzCache(Clazz clazz);
+
+    Clazz getClazzFormCache(Integer classId);
+
+    void invalidateCache(Integer classId);
+
+    Clazz getClazzFromDB(Integer classId);
+
+    Clazz getCachableClazz(Integer classId);
+
+    void deleteClazzSync(Integer classId);
 }

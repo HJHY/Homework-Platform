@@ -36,9 +36,15 @@ public class RedisPrefixConst {
     /*作业下载分布式锁的前缀*/
     public static final String HOMEWORK_FILE_DOWNLOAD_LOCK_PREFIX = "homework_file_download_lock_prefix:";
 
-    /*用户班级角色表前缀*/
+    /*用户班级角色表缓存前缀*/
     public static final String USER_CLASS_ROLE_PREFIX = "user_class_role_prefix:";
 
     /*用户班级角色表的锁前缀*/
     public static final String USER_CLASS_ROLE_LOCK_PREFIX = "user_class_role_lock_prefix:";
+
+    /*班级信息缓存的前缀*/
+    public static final String CLASS_INFO_PREFIX = "class_info_prefix:";
+
+    /*班级信息缓存锁的前缀*/
+    public static final String CLASS_INFO_LOCK_PREFIX = "class_info_lock_prefix:";
 }
