@@ -80,7 +80,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         this.redissonClient = redissonClient;
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional()
     @Override
     public Clazz createClass(Integer userId, ClassDto classDto) {
         //检查是否存在同名班级
@@ -108,7 +108,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         return clazz;
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public void updateClass(Integer classId, ClassDto classDto) {
         Clazz clazz = Clazz.builder().classId(classId).className(classDto.getClassName()).description(classDto.getDescription()).build();
@@ -128,7 +128,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void deleteClass(Integer classId, Boolean mandatory) {
         //不强制删除则检查班级内是否存在未结束作业
         if (Boolean.FALSE.equals(mandatory)) {
@@ -297,7 +297,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
         return userClassRoleService.list(new LambdaQueryWrapper<UserClassRole>().select(UserClassRole::getUserId).eq(UserClassRole::getClassId, classId).eq(UserClassRole::getRoleId, RoleConstant.CLASS_ADMIN.getRoleId()).eq(UserClassRole::getIsValid, 1)).stream().map(UserClassRole::getUserId).toList();
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public void setClassAdmin(Integer classId, List<Integer> userIdList) {
         if (ObjectUtils.isEmpty(userIdList)) {
@@ -473,7 +473,7 @@ public class ClazzServiceImpl extends ServiceImpl<ClazzMapper, Clazz> implements
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void deleteClazzSync(Integer classId) {
         //删除班级内的作业
         List<HomeworkRelease> homeworkReleaseList = homeworkReleaseService.list(new LambdaQueryWrapper<HomeworkRelease>()

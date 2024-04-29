@@ -80,7 +80,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public HomeworkRelease saveHomework(Integer userId, HomeworkReleaseDto homeworkReleaseDto) {
         //班级拦截器没有办法对班级信息做检查,因此这里需要手动检查班级的存在性
         // 获取HttpServletRequest对象
@@ -176,7 +176,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
 
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void deleteHomework(Integer homeworkId) {
         deleteHomeworkSync(homeworkId);
     }
@@ -310,7 +310,7 @@ public class HomeworkReleaseServiceImpl extends ServiceImpl<HomeworkReleaseMappe
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void deleteHomeworkSync(Integer homeworkId) {
         //获取写锁
         RLock wLock = redissonClient.getReadWriteLock(RedisPrefixConst.HOMEWORK_INFO_LOCK_PREFIX + homeworkId).writeLock();

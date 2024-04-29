@@ -40,9 +40,9 @@ public class EmailConsumer {
     }
 
     @RabbitHandler
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void process(Message message, EmailDto emailDto, Channel channel) throws IOException {
-        log.info("邮件发送消费者收到消息:" + emailDto);
+        log.info("邮件发送消费者收到消息:{}", emailDto);
         log.info("message:{}:", message.getMessageProperties());
 
         //判断消息序号的存在性,如果不存在则直接抛弃

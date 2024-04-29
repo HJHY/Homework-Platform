@@ -74,7 +74,7 @@ public class HomeworkSubmissionServiceImpl extends ServiceImpl<HomeworkSubmissio
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public FileUploadVo submit(Integer userId, Integer homeworkId, String description, String fileSuffix, String idempotentToken) throws Exception {
         String key = getIdempotentTokenKey(homeworkId, userId);
         String token;

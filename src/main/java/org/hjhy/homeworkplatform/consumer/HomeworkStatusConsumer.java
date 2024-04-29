@@ -34,9 +34,9 @@ public class HomeworkStatusConsumer {
     }
 
     @RabbitHandler
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void process(HomeworkStatusDto homeworkStatusDto, Message message, Channel channel) throws IOException {
-        log.info("作业状态检查消费者收到消息:" + homeworkStatusDto);
+        log.info("作业状态检查消费者收到消息:{}", homeworkStatusDto);
 
         String correlationId = message.getMessageProperties().getCorrelationId();
         if (ObjectUtils.isEmpty(correlationId)) {

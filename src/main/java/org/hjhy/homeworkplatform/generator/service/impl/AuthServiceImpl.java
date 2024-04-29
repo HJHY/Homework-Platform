@@ -87,7 +87,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void register(RegisterDto registerDto) {
         log.info("用户注册开始，registerDto: {}", registerDto);
         //获取验证码
