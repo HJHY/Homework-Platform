@@ -58,7 +58,6 @@ public class RedisConfig {
     RedissonClient redisson() {
         Config config = new Config();
         String address = "redis://" + redisProperties.getHost() + ":" + redisProperties.getPort();
-        System.out.println("address = " + address);
         config.useSingleServer()
                 .setAddress(address)
                 .setPassword(redisProperties.getPassword());
